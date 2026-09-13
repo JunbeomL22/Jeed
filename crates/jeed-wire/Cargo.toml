@@ -1,0 +1,12 @@
+[package]
+name = "jeed-wire"
+version = "0.1.0"
+description = "Fixed-layout wire records: the feed-handler <-> consumer shared-memory ABI."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# No dependencies, deliberately. This crate is the ABI both binaries agree on;
+# anything it pulls in, the consumer pulls in too. See documents/todo.md §2.
+[dependencies]
