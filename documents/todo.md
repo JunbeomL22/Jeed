@@ -86,7 +86,8 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
 | `src/data/exchanges/binance/decode/**` | `jeed-crypto/src/binance/` | 출력 타입 교체 + 디코더당 struct → `Instrument` + 자유함수 |
 | `src/data/receiver/crypto.rs` | 보류 | WS 수신부. tungstenite 를 들일지 별도 결정 |
 | `src/data/exchanges/{upbit,bithumb,okx,bybit}/decode/**` | `jeed-crypto/{upbit,bithumb,okx,bybit}/` | 완료. 시퀀스 추적(`last_seq_id`)은 안 가져왔다 — 핸들러는 무상태 |
-| `src/data/exchanges/{bitget,gate,htx,kraken,kucoin}/decode/**` | `jeed-crypto/` | 남음. 다섯 개 다 `{snapshot,delta,trade}.rs` 구조, bitget·kraken 만 `checksum.rs` 가 따로 |
+| `src/data/exchanges/{bitget,gate,kucoin}/decode/**` | `jeed-crypto/{bitget,gate,kucoin}/` | 완료. kucoin 은 spot/futures 두 모듈 |
+| `src/data/exchanges/{htx,kraken}/decode/**` | **안 가져옴** | 결정(2026-09-13). htx 는 gzip 프레이밍, kraken 은 객체형 레벨·RFC3339·시퀀스 없음 |
 | `src/data/exchanges/*/encode/**` | **안 가져옴** | 주문 |
 | `src/data/recovery/**` | **안 가져옴** | 델타 복구는 북을 가진 소비자 몫 |
 | `src/data/exchanges/smbs/**` | 보류 | 베뉴 방언, 실물 확인 후 |
@@ -496,20 +497,36 @@ spin 이냐 block 이냐가 실제 동작이다.
       주문 건수(`WireDeltaLevel` 에 자리가 없어 스냅샷만 맞고 첫 델타부터 틀려진다),
       바이비트 `seq`(교차 스트림 순서라 자리가 없다), 상태 추적 `last_seq_id`/`prev_seq`
       (갭 탐지는 북을 가진 소비자 몫), `SnapshotCutoff`, `recovery/`, `encode/`
-- [ ] **`jeed-crypto` — 나머지 거래소** (bitget · gate · htx · kraken · kucoin). 다섯 개 다
-      `{snapshot,delta,trade}.rs` 구조라 붙을 자리는 이미 있다. 붙이기 전에 정할 것 셋:
-  - **베뉴 바이트를 몇 개 쓰는가.** 모듈 수와 다른 질문이다(CLAUDE.md 의 표) — 전문이 갈리면 모듈,
-        `(venue, symbol)` 이 충돌하면 베뉴다. kucoin 은 spot/futures 가 `json.rs` 부터
-        갈려 있어 둘 다일 가능성이 높고, 나머지는 심볼이 시장을 가르는지 거래소마다 본다
-  - **`checksum.rs`.** bitget·kraken 은 체크섬을 따로 계산한다. OKX 와 같은 결론(안 싣는다)
-        이면 셋 다 안 싣고, 싣기로 하면 `SnapshotDeltaPayload` 패딩 + `delta_flags` 한 비트에
-        세 거래소가 같이 들어간다. 한 거래소만 위해 ABI 를 움직이지는 않는다
-  - **키 스캔은 `next_field` 로 시작한다.** 첫 바이트 디스패치가 되는지는 거래소마다
-        확인해야 하는 성질이고(CLAUDE.md), 확인 전에는 조용히 틀리지 않는 쪽이 기본값이다
+- [x] **`jeed-wire` v4 — 베뉴 네 개** (2026-09-13). `BitgetSpot = 10` · `BitgetLinear = 11` ·
+      `GateSpot = 12` · `KucoinSpot = 13` · `KucoinFutures = 14`. 레이아웃은 안 움직였다.
+      한때 `delta_flags::UPDATE_ID_VALID` 를 넣었다가 **도로 뺐다** — 크라켄(갱신ID가 아예
+      없는 유일한 거래소)을 안 가져오기로 하면서 남은 거래소가 전부 델타에 번호를 매기게 됐고,
+      그러면 항상 켜져 있는 플래그가 된다. 항상 켜지는 플래그는 잊어버리는 순간 틀리는 쪽이
+      위험해서, 필요해질 때(크라켄) 그 거래소와 같이 들어오는 게 맞다
+- [x] **`jeed-crypto` — bitget · gate · kucoin** (2026-09-13). 테스트 89건 추가로 237건
+  - **bitget** = OKX 의 전문에 단어만 바뀐 것(`seq`/`pseq`, `price`/`size`, 2원소 레벨).
+        `action` 이 없으면 거부한다 — OKX `books5` 와 달리 비트겟은 네 채널 모두 보낸다.
+        **fractal-engine 의 OKX 사슬 역전이 여기도 그대로 있었다**(`first = seq`,
+        `final = pseq`). 같은 실수 두 번
+  - **gate** = 바이낸스의 `U`/`u` 사슬에 `result` 봉투. 체결은 프레임당 하나라 반복자가 없고,
+        `create_time_ms` 의 소수점 이하(밀리초 미만)를 **살려서** 싣는다(fractal-engine 은
+        점에서 자른다). 북 스냅샷은 REST 뿐이라 `snapshot.rs` 가 REST 본문을 받는다
+  - **kucoin** = 현물/선물이 봉투만 같고 안은 전부 다르다. 현물 델타는
+        `sequenceStart`…`sequenceEnd` 범위 + 3원소 레벨, 선물 델타는 `"90631.2,sell,2"`
+        문자열 하나. 선물 수량은 **계약 수(정수)** 라 스케일 0. 시각은 체결이 나노초,
+        선물 북이 밀리초 — 같은 거래소 안에서 갈린다
+  - **안 가져온 것:** 체크섬(비트겟 — OKX 와 같은 결론), 시퀀스 갭 추적, `SnapshotCutoff`,
+        `recovery/`, `encode/`
+- [x] **htx · kraken 은 안 가져온다** (2026-09-13, 결정). htx 는 WS 프레임이 전부 gzip 이라
+      압축 해제가 수신부로 들어가야 하고(크레이트에 의존성이 생긴다), kraken 은 레벨이
+      객체형(`{"price":…,"qty":…}`)에 시각이 RFC3339, 그리고 **시퀀스가 아예 없어** 델타의
+      갱신ID 자리를 비워야 한다 — 셋 다 지금 있는 것과 모양이 다르다. 필요해지면 그때
+      `Venue` 다음 바이트로 들어온다
 - [ ] **`jeed-crypto` 수신부** — WS + TLS. `tungstenite` 를 워크스페이스에 들일지 먼저 정한다.
       fractal-engine `receiver/crypto.rs` 는 Linux epoll / Windows thread-per-socket 두 갈래.
-      다섯 거래소가 더 붙어도 수신부는 하나이므로, 거래소를 마저 가져오는 것과 순서가 바뀌어도
-      된다 — 디코더는 바이트 슬라이스만 보고 수신부는 디코더를 모른다
+      디코더는 바이트 슬라이스만 보고 수신부는 디코더를 모르므로 거래소가 더 붙어도 하나다.
+      REST 스냅샷을 누가 가져올지도 여기서 정해진다 — `snapshot::decode` 는 이미 있고
+      요청하는 쪽이 없다
 - [ ] **`jeed` 바이너리** — conf 로딩, 코어 핀, 세그먼트 생성, 소켓 가입, 기동 검증.
       지금 `crates/jeed/` 는 없다. KRX·FIX·크립토 셋이 각자 수신부를 갖고 있으므로
       바이너리가 정하는 건 "무엇을 띄우고 어느 코어에 붙이고 어느 세그먼트에 쓰느냐" 뿐이다

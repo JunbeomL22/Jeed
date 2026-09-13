@@ -55,13 +55,17 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod binance;
+pub mod bitget;
 pub mod bithumb;
 pub mod book;
 pub mod bybit;
 pub mod error;
+pub mod gate;
 pub mod instrument;
 pub mod json;
+pub mod kucoin;
 pub mod okx;
+pub mod time;
 pub mod upbit;
 
 pub(crate) mod delta;
@@ -70,13 +74,4 @@ pub(crate) mod mask;
 pub use book::BookShape;
 pub use error::CryptoError;
 pub use instrument::Instrument;
-
-/// Milliseconds, as every crypto venue timestamps, in nanoseconds.
-///
-/// Saturating rather than wrapping: a garbage millisecond field must not come
-/// out the far side as a plausible time. `u64::MAX` ns is year 2554, so this
-/// only ever triggers on nonsense.
-#[inline]
-pub const fn millis_to_nanos(ms: u64) -> jeed_wire::UnixNano {
-    ms.saturating_mul(1_000_000)
-}
+pub use time::millis_to_nanos;

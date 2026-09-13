@@ -23,7 +23,8 @@ crates/
   jeed-shm/    named mapping(Win32) / shm_open(POSIX) + SPSC 링 (producer/consumer)
   jeed-krx/    KRX UDP 수신 + 전문 디코더 → WireRecord
   jeed-fix/    FIX 4.4 프로토콜 → MdMessage → WireRecord
-  jeed-crypto/ 크립토 거래소 WebSocket JSON → WireRecord (binance·upbit·bithumb·okx·bybit)
+  jeed-crypto/ 크립토 WebSocket JSON → WireRecord
+               (binance·upbit·bithumb·okx·bybit·bitget·gate·kucoin)
   jeed/        바이너리 (krx, fix)
 documents/     설계·표준서·제도 문서
 conf/          채널 테이블(생성) + 배포 설정(수기)
@@ -52,8 +53,11 @@ conf/          채널 테이블(생성) + 배포 설정(수기)
 |---|---|---|---|
 | binance | `spot` / `futures` | 2 | 전문이 다르다(`@trade` vs `@aggTrade`) **그리고** `BTCUSDT` 가 충돌 |
 | bybit | 하나 | 2 | 전문이 같다. `BTCUSDT` 는 충돌하므로 베뉴만 가른다 |
+| bitget | 하나 | 2 | 바이비트와 같다. `instType` 만 다르고 `BTCUSDT` 는 충돌한다 |
 | okx | 하나 | 1 | 전문도 같고 `instId` 가 이미 시장을 가른다(`BTC-USDT-SWAP`) |
 | upbit · bithumb | 하나씩 (빗썸은 업비트 것을 재수출) | 2 | 현물뿐. 같은 `KRW-BTC` 가 다른 북이라 베뉴는 갈라야 한다 |
+| gate | 하나 (현물) | 1 | 현물만 가져왔다. 무기한도 `BTC_USDT` 라 그때 두 번째 바이트가 필요하다 |
+| kucoin | `spot` / `futures` | 2 | 전문이 완전히 다르다. 심볼은 안 겹치지만(`XBTUSDTM` vs `BTC-USDT`) 그건 규약이 아니라 작명 습관이다 |
 
 **모듈 수와 베뉴 바이트 수는 다른 질문이다.** 모듈은 *전문이 갈리느냐*, 베뉴는
 *`(venue, symbol)` 이 충돌하느냐. 바이비트가 그 둘이 어긋나는 자리다.
@@ -316,21 +320,59 @@ OKX `books` 는 `action` 이 `snapshot`/`update`, 바이비트 `orderbook` 은 `
 `sequence_id` 자리에 넣었는데, 그러면 소비자가 같은 밀리초에 나온 두 북을 같은 북으로 본다.
 `quote_ext` 는 `NONE` 으로 둔다. **없는 건 사실이고 대역은 사실이 아니다.**
 
-### OKX `checksum` 은 싣지 않는다
+### OKX·비트겟 `checksum` 은 싣지 않는다
 
 `books` 메시지마다 상위 25단에 대한 CRC32 가 온다. 유용하지만 안 싣는다 — 핸들러는 북이
-없어서 스스로 검증할 수 없고, 계산 규칙(25단, `가격:수량` 을 콜론으로 잇기)이 OKX 전용이라
+없어서 스스로 검증할 수 없고, 계산 규칙(25단, `가격:수량` 을 콜론으로 잇기)이 거래소 전용이라
 소비자가 `venue` 로 분기해야 읽힌다. 되돌리는 건 싸다: `SnapshotDeltaPayload` 의 패딩과
 `delta_flags` 비트 하나에 들어가고 다른 필드는 안 움직인다.
+
+비트겟이 앞의 이유를 구체적으로 보여준다 — fractal-engine 의 검증기는 **북을 들고 있어야**
+그 필드를 쓸 수 있다. 그게 피드 핸들러가 안 하는 바로 그 일이다.
+
+### 시각의 단위가 거래소마다 다르다
+
+대부분 밀리초지만 **쿠코인은 나노초**(`time`·`ts`, 19자리)이고 **게이트는 소수점 있는
+밀리초**(`"1606292218213.4578"`)다. 그리고 쿠코인은 한 거래소 안에서도 갈린다 — 체결 채널은
+나노초, 선물 북 델타(`timestamp`)와 현물 REST 북(`time`)은 밀리초다. **같은 `time` 이라는
+이름으로.**
+
+그래서 변환은 전부 `jeed_crypto::time` 한 곳에 있고, 디코더는 자기가 읽는 게 무엇인지
+주석으로 밝힌다. 백만 배 틀리면 레코드가 1970년이나 서기 56000년에 찍힌다.
+
+### REST 북도 디코드한다 — 다만 이 크레이트는 요청하지 않는다
+
+게이트·쿠코인 현물의 델타 채널은 통째 북을 안 보낸다. 시작 북은 REST 로만 오고, 그걸
+`snapshot::decode` 가 받는다. **소켓도 HTTP 클라이언트도 없다** — 바이트는 호출자가 준다.
+
+그럼 왜 여기서 푸느냐: 안 그러면 소비자가 거래소 JSON 을 직접 파싱해야 하고, 그건 베뉴
+지식을 링 반대편으로 넘기는 것이다. 프로세스를 나눈 이유가 없어진다.
+
+### 변경 하나가 문자열로 오기도 한다 (쿠코인 선물)
+
+`"change":"90631.2,sell,2"` — 가격·방향·수량이 쉼표로 이어진 한 줄이고 메시지당 레벨
+하나다. 방향을 못 읽으면 **발행하지 않는다**: 반대쪽에 적용하면 두 가격이 틀리고
+(움직였어야 할 것과 안 움직였어야 할 것) 어느 후속 메시지도 그걸 고쳐주지 않는다.
 
 ### `s` 를 검사한다
 
 디코더 하나가 구독 하나라서 프레임의 심볼이 다르면 **배선 사고**다. 안 보고 넘기면 ETH
 가격이 BTCUSDT 심볼을 달고 발행된다 — 가장 조용한 오류다. memcmp 한 번이니 검사한다.
 
-거래소마다 어디 있는지가 다르다: 바이낸스·바이비트는 `s`, 업비트·빗썸은 `code`/`cd`,
-OKX 는 `instId` — 그리고 OKX `books` 는 데이터 객체가 아니라 **`arg` 봉투에만** 있다.
-(REST 스냅샷엔 아예 없다. 있을 때만 본다.)
+거래소마다 어디 있는지가 다르다:
+
+| | 어디에 |
+|---|---|
+| 바이낸스 · 바이비트 | `s` |
+| 업비트 · 빗썸 | `code` / `cd` |
+| OKX | `instId` — `books` 는 데이터 객체가 아니라 **`arg` 봉투에만** |
+| 비트겟 | **`arg.instId` 뿐.** 데이터 객체에는 심볼이 아예 없다 |
+| 게이트 | `result.s`(북) / `result.currency_pair`(체결) |
+| 쿠코인 | `data.symbol`, 없으면 `topic` 의 콜론 뒤 — 선물 북은 **`topic` 뿐** |
+
+봉투에만 있는 거래소(비트겟, 쿠코인 선물)는 프레임당 한 번 검사한다. 그래서 비트겟
+`trade::trades` 는 OKX 와 달리 `Instrument` 를 받는다 — 검사할 기회가 거기밖에 없다.
+(REST 본문엔 아예 없기도 하다. 있을 때만 본다.)
 
 ## Coding Guidelines
 
