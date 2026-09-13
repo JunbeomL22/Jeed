@@ -72,13 +72,13 @@ pub const WIRE_MAX_DEPTH: usize = 10;
 pub const WIRE_HEADER_LEN: usize = 48;
 
 /// Size of the payload area in bytes — sized by the largest payload
-/// ([`TradeQuotePayload`], 32 + 496).
-pub const WIRE_PAYLOAD_LEN: usize = 528;
+/// ([`TradeQuotePayload`], 48 + 496).
+pub const WIRE_PAYLOAD_LEN: usize = 544;
 
 /// Size of one record in bytes: header + payload + explicit tail padding,
-/// rounded up to a whole number of 64-byte cache lines (9 lines; 48 + 528
-/// needs no tail).
-pub const WIRE_RECORD_LEN: usize = 576;
+/// rounded up to a whole number of 64-byte cache lines (10 lines; 48 + 544 is
+/// 592, so 48 bytes of explicit tail follow).
+pub const WIRE_RECORD_LEN: usize = 640;
 
 /// Alignment of a record and of the segment header (one cache line).
 pub const WIRE_ALIGN: usize = 64;

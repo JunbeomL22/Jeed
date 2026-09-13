@@ -10,8 +10,8 @@ use jeed_wire::{
 fn payload_sizes_are_the_documented_ones() {
     assert_eq!(size_of::<WireLevel>(), 24);
     assert_eq!(size_of::<QuotePayload>(), 496);
-    assert_eq!(size_of::<TradePayload>(), 32);
-    assert_eq!(size_of::<TradeQuotePayload>(), 528);
+    assert_eq!(size_of::<TradePayload>(), 48);
+    assert_eq!(size_of::<TradeQuotePayload>(), 544);
     assert_eq!(size_of::<OpenInterestPayload>(), 8);
     assert_eq!(size_of::<InvestorStatsPayload>(), 48);
     assert_eq!(size_of::<PriceLimitPayload>(), 40);
@@ -112,6 +112,31 @@ fn trade_optional_fields_are_absent_until_marked() {
 }
 
 #[test]
+fn dynamic_price_limits_are_absent_until_marked() {
+    // KRX sends `000000.00`, not blanks, for instruments outside the dynamic
+    // limit regime — so a zero band and an absent one look identical in the
+    // raw message and the conclusion has to ride in a flag.
+    let mut t = TradePayload::new(93700, 2);
+    assert_eq!(t.dyn_limits(), None);
+    assert_eq!(t.dyn_upper, 0);
+
+    t.with_dyn_limits(0, 0);
+    assert_eq!(t.dyn_limits(), Some((0, 0)), "a zero band that is really in force");
+    assert!(t.trade_flags & trade_flags::DYN_LIMIT_VALID != 0);
+}
+
+#[test]
+fn the_three_optional_trade_fields_are_marked_independently() {
+    let mut t = TradePayload::new(93700, 2);
+    t.with_dyn_limits(93_700 + 900, 93_700 - 900);
+
+    assert_eq!(t.dyn_limits(), Some((94_600, 92_800)));
+    assert_eq!(t.cumulative_qty(), None, "marking one must not mark the others");
+    assert_eq!(t.trade_yield(), None);
+    assert_eq!(t.trade_flags, trade_flags::DYN_LIMIT_VALID);
+}
+
+#[test]
 fn no_aggressor_flag_is_distinct_from_an_unclassified_one() {
     // "this channel has no direction field" and "the field was there but said
     // nothing" are different facts, so they get different values.
@@ -128,10 +153,15 @@ fn trade_quote_is_the_trade_and_the_book_it_left() {
     let mut quote = QuotePayload::default();
     quote.set_ask(0, WireLevel::new(93705, 10));
     quote.set_bid(0, WireLevel::new(93695, 8));
-    let tq = TradeQuotePayload { trade: TradePayload::new(93700, 2), quote };
+    let mut trade = TradePayload::new(93700, 2);
+    // The inner fence of the order-eligible range, from the same G7 message
+    // that carried the print (documents/krx/실시간가격제한.md).
+    trade.with_dyn_limits(93_700 + 865, 93_700 - 865);
+    let tq = TradeQuotePayload { trade, quote };
 
+    assert_eq!(tq.trade.dyn_limits(), Some((94_565, 92_835)));
     assert_eq!(tq.trade.price, 93700);
     assert_eq!(tq.quote.ask[0].price, 93705);
     assert_eq!(core::mem::offset_of!(TradeQuotePayload, trade), 0);
-    assert_eq!(core::mem::offset_of!(TradeQuotePayload, quote), 32);
+    assert_eq!(core::mem::offset_of!(TradeQuotePayload, quote), 48);
 }

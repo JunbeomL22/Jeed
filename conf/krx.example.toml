@@ -25,7 +25,7 @@ mode  = "spin"          # 논블로킹 소켓을 도는 busy-spin. 코어 100%
 cores = [2]             # 핀 코어 1개 = 수신 스레드 1개 = producer 1개 = 링 1개.
                         # SMT 형제(7700 기준 10)는 비워 둔다
 ring  = "jeed.krx.hot"
-ring_slots = 65536      # 슬롯 하나 576B → 약 36MB. 2의 거듭제곱이어야 한다
+ring_slots = 65536      # 슬롯 하나 640B → 약 40MB. 2의 거듭제곱이어야 한다
 
 sockets = [
   # "233.xxx.xxx.92:10302",   # 코스피200 선물

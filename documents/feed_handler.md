@@ -124,6 +124,10 @@ contract*" 라고 적고 있다. **backtest 리플레이도 와이어 레코드�
 
 ### 페이로드 528B · 레코드 576B (구현 2026-09-13, `src/data/common/wire/`)
 
+> **Jeed 에서는 페이로드 544B · 레코드 640B 다.** `TradePayload` 가 32 → 48B 로 늘었다
+> (`dyn_upper`/`dyn_lower` + `DYN_LIMIT_VALID`) — `G7` 의 동적상하한가를 버릴 수 없어서다.
+> 근거는 `documents/todo.md` §12. 아래 숫자는 이 문서가 쓰인 시점의 것이다.
+
 설계 시점의 "Quote 240B / 합 288B" 는 **TradeQuote(체결+호가) 와 레벨 확장이 안 들어가서**, 그리고
 **깊이 5 가 주식·ETF 채널(01S, KODEX 등)의 10단을 못 담아서** 바뀌었다. 파생·채권은 10 중 5 만 쓴다:
 

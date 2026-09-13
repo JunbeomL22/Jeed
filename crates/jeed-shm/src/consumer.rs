@@ -179,7 +179,8 @@ impl RingConsumer {
             return self.reseat(want);
         }
 
-        // SAFETY: the slot is 576 initialised bytes of exactly this layout.
+        // SAFETY: the slot is `WIRE_RECORD_LEN` initialised bytes of exactly
+        // this layout.
         // Volatile because the producer may be writing it: the check below is
         // only meaningful if the compiler cannot move the copy across it.
         *out = unsafe { rec.read_volatile() };

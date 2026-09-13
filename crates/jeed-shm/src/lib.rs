@@ -9,9 +9,9 @@
 //! ```text
 //! offset 0      SegmentHeader   128 B   magic · version · capacity · boot_id
 //!                                       | write_cursor · drop_counter
-//! offset 128    slot 0          576 B
-//!               slot 1          576 B
-//!               …               capacity slots, each 9 cache lines
+//! offset 128    slot 0          640 B
+//!               slot 1          640 B
+//!               …               capacity slots, each 10 cache lines
 //! ```
 //!
 //! The ring **overwrites** rather than back-pressures, and the record's own

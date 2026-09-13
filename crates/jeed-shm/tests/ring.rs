@@ -7,7 +7,7 @@ use jeed_wire::{SEGMENT_HEADER_LEN, WIRE_ALIGN, WIRE_RECORD_LEN, WireRecord};
 fn a_segment_is_a_header_followed_by_whole_records() {
     assert_eq!(segment_len(0), SEGMENT_HEADER_LEN);
     assert_eq!(segment_len(1), SEGMENT_HEADER_LEN + WIRE_RECORD_LEN);
-    assert_eq!(segment_len(1 << 16), 128 + 65_536 * 576);
+    assert_eq!(segment_len(1 << 16), 128 + 65_536 * 640);
 }
 
 #[test]
@@ -40,5 +40,5 @@ fn the_sequence_field_is_naturally_aligned_inside_a_slot() {
 fn a_sixty_four_kilo_slot_segment_is_a_sane_default() {
     // Sizing note for `conf/`: this is what one hot channel costs in RAM.
     let bytes = segment_len(1 << 16);
-    assert!((36..40).contains(&(bytes / (1024 * 1024))), "{} MiB", bytes / (1024 * 1024));
+    assert!((40..44).contains(&(bytes / (1024 * 1024))), "{} MiB", bytes / (1024 * 1024));
 }

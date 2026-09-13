@@ -169,6 +169,14 @@ pub struct TradePayload {
     /// [`trade_flags::CUMULATIVE_QTY_VALID`].
     pub cumulative_qty: BookQuantity,
 
+    /// Dynamic upper price limit in force after this print, in `price_scale`
+    /// units; meaningful with [`trade_flags::DYN_LIMIT_VALID`].
+    pub dyn_upper: BookPrice,
+
+    /// Dynamic lower price limit in force after this print; meaningful with
+    /// [`trade_flags::DYN_LIMIT_VALID`].
+    pub dyn_lower: BookPrice,
+
     /// Trade yield; meaningful with [`trade_flags::YIELD_VALID`].
     pub trade_yield: BookYield,
 
@@ -182,9 +190,9 @@ pub struct TradePayload {
     pub _pad: u16,
 }
 
-const _: () = assert!(size_of::<TradePayload>() == 32);
+const _: () = assert!(size_of::<TradePayload>() == 48);
 const _: () = assert!(
-    size_of::<BookPrice>()
+    3 * size_of::<BookPrice>()
         + 2 * size_of::<BookQuantity>()
         + size_of::<BookYield>()
         + 2 * size_of::<u8>()
@@ -200,6 +208,8 @@ impl TradePayload {
             price,
             qty,
             cumulative_qty: 0,
+            dyn_upper: 0,
+            dyn_lower: 0,
             trade_yield: 0,
             trade_kind: trade_kind::NONE,
             trade_flags: 0,
@@ -220,6 +230,37 @@ impl TradePayload {
         self.cumulative_qty = cumulative;
         self.trade_flags |= trade_flags::CUMULATIVE_QTY_VALID;
         self
+    }
+
+    /// Sets the dynamic price limits in force and marks them valid.
+    ///
+    /// KRX sends `000000.00` rather than blanks for instruments the dynamic
+    /// limit regime does not cover (far-month futures, spreads). Zero is
+    /// therefore not distinguishable from "not applicable" in the raw message,
+    /// which is why the conclusion rides in a flag instead of the value
+    /// (`CLAUDE.md`).
+    #[inline]
+    pub const fn with_dyn_limits(&mut self, upper: BookPrice, lower: BookPrice) -> &mut Self {
+        self.dyn_upper = upper;
+        self.dyn_lower = lower;
+        self.trade_flags |= trade_flags::DYN_LIMIT_VALID;
+        self
+    }
+
+    /// Dynamic `(upper, lower)` price limits, if the producer marked them
+    /// applicable.
+    ///
+    /// These are the **inner** fence of the order-eligible range; the outer one
+    /// is the static price limit carried by `V1`
+    /// ([`PriceLimitPayload`]). An order must clear both
+    /// (`documents/krx/실시간가격제한.md`).
+    #[inline]
+    pub const fn dyn_limits(&self) -> Option<(BookPrice, BookPrice)> {
+        if self.trade_flags & trade_flags::DYN_LIMIT_VALID != 0 {
+            Some((self.dyn_upper, self.dyn_lower))
+        } else {
+            None
+        }
     }
 
     /// Sets the yield and marks it valid.
@@ -255,7 +296,7 @@ impl TradePayload {
 // Trade + quote
 // ============================================================================
 
-/// Trade print followed by the post-trade book (528 bytes).
+/// Trade print followed by the post-trade book (544 bytes).
 ///
 /// This is the largest payload, so it sets [`WIRE_PAYLOAD_LEN`]. KRX
 /// `IFMSRPD0037` (`G7`) is the channel that produces it: the print and the
@@ -271,7 +312,7 @@ pub struct TradeQuotePayload {
     pub quote: QuotePayload,
 }
 
-const _: () = assert!(size_of::<TradeQuotePayload>() == 528);
+const _: () = assert!(size_of::<TradeQuotePayload>() == 544);
 const _: () =
     assert!(size_of::<TradePayload>() + size_of::<QuotePayload>() == size_of::<TradeQuotePayload>());
 

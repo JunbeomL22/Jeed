@@ -132,6 +132,14 @@ pub mod trade_flags {
 
     /// `trade_yield` is meaningful (bond channels).
     pub const YIELD_VALID: u8 = 1 << 1;
+
+    /// `dyn_upper` / `dyn_lower` are meaningful.
+    ///
+    /// Separate from the values because KRX cannot express "not applicable":
+    /// instruments outside the dynamic-limit regime carry `000000.00`, not
+    /// blanks, so a zero band is indistinguishable from an absent one in the
+    /// raw message. The handler decides; the wire carries the conclusion (§8).
+    pub const DYN_LIMIT_VALID: u8 = 1 << 2;
 }
 
 /// Trade kind encoding ([`TradePayload::trade_kind`](crate::TradePayload::trade_kind)).

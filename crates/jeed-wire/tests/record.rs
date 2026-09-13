@@ -25,13 +25,17 @@ fn quote_record() -> WireRecord {
 }
 
 #[test]
-fn layout_is_nine_whole_cache_lines() {
+fn layout_is_ten_whole_cache_lines() {
     assert_eq!(size_of::<WireRecord>(), WIRE_RECORD_LEN);
-    assert_eq!(size_of::<WireRecord>(), 576);
+    assert_eq!(size_of::<WireRecord>(), 640);
     assert_eq!(align_of::<WireRecord>(), WIRE_ALIGN);
     assert_eq!(WIRE_RECORD_LEN % WIRE_ALIGN, 0);
-    assert_eq!(WIRE_RECORD_LEN / WIRE_ALIGN, 9);
-    assert_eq!(WIRE_HEADER_LEN + WIRE_PAYLOAD_LEN, WIRE_RECORD_LEN, "no tail padding today");
+    assert_eq!(WIRE_RECORD_LEN / WIRE_ALIGN, 10);
+    // 48 + 544 = 592, which is not a whole number of cache lines, so the
+    // record carries 48 bytes of explicit tail. Explicit, because implicit
+    // padding would be uninitialised bytes going onto the wire.
+    assert_eq!(WIRE_HEADER_LEN + WIRE_PAYLOAD_LEN, 592);
+    assert_eq!(WIRE_RECORD_LEN - 592, 48);
 }
 
 #[test]
