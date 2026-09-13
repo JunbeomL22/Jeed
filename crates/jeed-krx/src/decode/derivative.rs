@@ -1,45 +1,44 @@
 //! Derivative real-time messages (`DRV`, product groups ending in `F`).
 //!
-//! Every one of them opens with the same 47-byte header and, where it carries a
-//! book, the same 46-byte level block repeated `depth` times. That regularity
-//! is not an accident of the spec — it is why one decoder covers both the
-//! five-deep and ten-deep variants of a message rather than two near-copies
-//! drifting apart:
+//! Every one of them opens with the 47-byte shape-A header
+//! ([`common`](super::common)) and, where it carries a book, the same 46-byte
+//! level block repeated `depth` times. That regularity is not an accident of
+//! the spec — it is why one decoder covers both the five-deep and ten-deep
+//! variants of a message rather than two near-copies drifting apart:
 //!
 //! | | 5-deep | 10-deep |
 //! |---|---|---|
 //! | `B6` 우선호가 | `IFMSRPD0034` 324 B | `IFMSRPD0035` 554 B |
 //! | `G7` 체결+우선호가 | `IFMSRPD0037` 431 B | `IFMSRPD0038` 661 B |
 //!
+//! `A3` 체결 (`IFMSRPD0036`, 173 B) is the same trade block as `G7` with the
+//! book cut off, which is why [`fill_trade`] is shared rather than copied.
+//!
+//! The two price-limit messages (`V1`, `Q2`) use a different, shorter header —
+//! [`limit_header`].
+//!
 //! Offsets below come from `documents/krx/layouts.md`, which is generated from
 //! the spec. They are not counted by hand — the spec's own offset column is an
 //! *end* offset, and reading it as a start shifts every field by one while
 //! still producing plausible numbers.
 
+pub mod dynamic_limit;
+pub mod price_limit;
 pub mod quote;
+pub mod trade;
 pub mod trade_quote;
 
+use crate::decode::common::{BookAccum, BookShape, Header, slice};
 use crate::error::KrxError;
 use crate::field::{self, Decimal};
 use crate::trcode::TrCode;
-use jeed_wire::{
-    ISIN_LEN, Isin, QuotePayload, Scale, UnixNano, WIRE_MAX_DEPTH, WireLevel, header_flags,
-};
+use jeed_wire::{ISIN_LEN, QuotePayload, Scale, TradePayload, WIRE_MAX_DEPTH, WireLevel, trade_kind};
 
-/// Bytes before the first book level (and before the trade block on `G7`).
-pub const HEADER_LEN: usize = 47;
+pub use crate::decode::common::{HEADER_LEN, fill_record_header, header};
 
 /// Bytes per book level: ask price, bid price, ask qty, bid qty, ask count,
 /// bid count.
 pub const LEVEL_LEN: usize = 46;
-
-// Header field offsets (documents/krx/layouts.md).
-const OFF_SEQUENCE: usize = 5;
-const OFF_BOARD: usize = 13;
-const OFF_SESSION: usize = 15;
-const OFF_ISIN: usize = 17;
-const OFF_INDEX: usize = 29;
-const OFF_TIME: usize = 35;
 
 // Offsets within one level block.
 const LVL_ASK_PRICE: usize = 0;
@@ -48,6 +47,17 @@ const LVL_ASK_QTY: usize = 18;
 const LVL_BID_QTY: usize = 27;
 const LVL_ASK_COUNT: usize = 36;
 const LVL_BID_COUNT: usize = 41;
+
+/// Bytes before the body on `V1` / `Q2` — shape C. Shorter than shape A
+/// because these two carry no 세션ID, and the 정보분배종목인덱스 sits directly
+/// behind the 종목코드 instead of in front of the timestamp.
+pub const LIMIT_HEADER_LEN: usize = 33;
+
+// Shape C offsets.
+const LIM_SEQUENCE: usize = 5;
+const LIM_BOARD: usize = 13;
+const LIM_ISIN: usize = 15;
+const LIM_INDEX: usize = 27;
 
 /// Book depth of a derivative product group.
 ///
@@ -71,60 +81,37 @@ pub const fn depth_for_product_group(trcode: TrCode) -> usize {
     }
 }
 
-/// The eight fields that open every derivative real-time message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Header {
-    /// The message's own trcode.
-    pub trcode: TrCode,
-
-    /// 정보분배일련번호. **`None` when the field is blank**, which whole
-    /// channels do — `B606F` sent nothing but blanks until 2026-04-01, and
-    /// `V103F` still does. Blank means "not measurable", not "no gap", and it
-    /// is per (instrument × board) so it is not a channel liveness signal
-    /// either (`CLAUDE.md`).
-    pub sequence: Option<u64>,
-
-    /// 보드ID.
-    pub board: [u8; 2],
-
-    /// 세션ID.
-    pub session: [u8; 2],
-
-    /// 종목코드.
-    pub isin: Isin,
-
-    /// 정보분배종목인덱스 — a per-day, per-market index. Not carried on the
-    /// wire: it is not stable across days, so the consumer resolves identity
-    /// from `(venue, isin)` instead.
-    pub index: Option<u64>,
-
-    /// 매매처리시각 as nanoseconds since KST midnight, dateless.
-    pub time_of_day_ns: Option<u64>,
-}
-
-/// Reads the common header. Assumes the frame check has already run.
-pub const fn header(payload: &[u8]) -> Result<Header, KrxError> {
-    if payload.len() < HEADER_LEN {
-        return Err(KrxError::TooShort { need: HEADER_LEN, got: payload.len() });
+/// Reads a shape-C header (`V1` / `Q2`).
+///
+/// `time_at` / `time_len` locate the message's own clock field, which the two
+/// do not agree on: `V1` spells 가격확대시각 in nine bytes (milliseconds), `Q2`
+/// spells 매매처리시각 in twelve (microseconds).
+pub const fn limit_header(
+    payload: &[u8],
+    time_at: usize,
+    time_len: usize,
+) -> Result<Header, KrxError> {
+    if payload.len() < time_at + time_len {
+        return Err(KrxError::TooShort { need: time_at + time_len, got: payload.len() });
     }
 
     let trcode = match TrCode::from_message(payload) {
         Ok(c) => c,
         Err(e) => return Err(e),
     };
-    let sequence = match field::uint(slice(payload, OFF_SEQUENCE, 8), OFF_SEQUENCE) {
+    let sequence = match field::uint(slice(payload, LIM_SEQUENCE, 8), LIM_SEQUENCE) {
         Ok(v) => v,
         Err(e) => return Err(e),
     };
-    let isin = match field::isin(slice(payload, OFF_ISIN, ISIN_LEN)) {
+    let isin = match field::isin(slice(payload, LIM_ISIN, ISIN_LEN)) {
         Ok(v) => v,
         Err(e) => return Err(e),
     };
-    let index = match field::uint(slice(payload, OFF_INDEX, 6), OFF_INDEX) {
+    let index = match field::uint(slice(payload, LIM_INDEX, 6), LIM_INDEX) {
         Ok(v) => v,
         Err(e) => return Err(e),
     };
-    let time_of_day_ns = match field::time_of_day_ns(slice(payload, OFF_TIME, 12), OFF_TIME) {
+    let time_of_day_ns = match field::time_of_day_ns(slice(payload, time_at, time_len), time_at) {
         Ok(v) => v,
         Err(e) => return Err(e),
     };
@@ -132,42 +119,16 @@ pub const fn header(payload: &[u8]) -> Result<Header, KrxError> {
     Ok(Header {
         trcode,
         sequence,
-        board: [payload[OFF_BOARD], payload[OFF_BOARD + 1]],
-        session: [payload[OFF_SESSION], payload[OFF_SESSION + 1]],
+        board: [payload[LIM_BOARD], payload[LIM_BOARD + 1]],
+        session: [b' ', b' '],
         isin,
         index,
         time_of_day_ns,
     })
 }
 
-/// `payload[at..at + len]`, in a `const fn`.
-#[inline]
-pub(crate) const fn slice(payload: &[u8], at: usize, len: usize) -> &[u8] {
-    let (_, rest) = payload.split_at(at);
-    let (field, _) = rest.split_at(len);
-    field
-}
-
-/// What filling a book told us about it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BookShape {
-    /// Price scale read off the message (the decimal point's position varies by
-    /// instrument, not by message — see [`Decimal`]).
-    pub price_scale: Scale,
-
-    /// Levels actually carrying a resting order, per the deeper side.
-    pub depth: u8,
-
-    /// [`header_flags::BID_EMPTY`] / [`header_flags::ASK_EMPTY`] as they apply.
-    pub flags: u8,
-}
-
 /// Fills `depth` book levels starting at `first_level`, and reports what the
 /// book turned out to be.
-///
-/// Levels past the end of the real book arrive zero-filled, so the depth the
-/// wire reports is counted rather than assumed: a five-deep channel with two
-/// resting levels says two.
 pub fn fill_book(
     payload: &[u8],
     first_level: usize,
@@ -176,9 +137,7 @@ pub fn fill_book(
 ) -> Result<BookShape, KrxError> {
     debug_assert!(depth <= WIRE_MAX_DEPTH);
 
-    let mut decimals: Option<u8> = None;
-    let mut ask_depth = 0usize;
-    let mut bid_depth = 0usize;
+    let mut accum = BookAccum::default();
 
     for level in 0..depth {
         let at = first_level + level * LEVEL_LEN;
@@ -190,20 +149,9 @@ pub fn fill_book(
         let ask_count = field::uint(slice(payload, at + LVL_ASK_COUNT, 5), at + LVL_ASK_COUNT)?;
         let bid_count = field::uint(slice(payload, at + LVL_BID_COUNT, 5), at + LVL_BID_COUNT)?;
 
-        // The first price that is spelled at all fixes the scale for the whole
-        // message: every price in one message is one instrument's.
-        if decimals.is_none() {
-            decimals = ask_price.or(bid_price).map(|d: Decimal| d.decimals);
-        }
-
         let ask_qty = ask_qty.unwrap_or(0);
         let bid_qty = bid_qty.unwrap_or(0);
-        if ask_qty > 0 {
-            ask_depth = level + 1;
-        }
-        if bid_qty > 0 {
-            bid_depth = level + 1;
-        }
+        accum.observe(level, ask_price.or(bid_price).map(|d: Decimal| d.decimals), ask_qty, bid_qty);
 
         out.set_ask(
             level,
@@ -227,41 +175,72 @@ pub fn fill_book(
     // is why this is a payload-level fact and not a per-level one.
     out.with_order_counts();
 
-    let mut flags = 0u8;
-    if ask_depth == 0 {
-        flags |= header_flags::ASK_EMPTY;
-    }
-    if bid_depth == 0 {
-        flags |= header_flags::BID_EMPTY;
-    }
-
-    let decimals = decimals.unwrap_or(0);
-    let price_scale = Scale::from_decimals(decimals as usize)
-        .ok_or(KrxError::Overflow { at: first_level })?;
-
-    Ok(BookShape {
-        price_scale,
-        depth: ask_depth.max(bid_depth) as u8,
-        flags,
-    })
+    accum.finish(first_level)
 }
 
-/// Fills the header of a record that is about to carry a derivative message.
+// Offsets of the trade block, from documents/krx/layouts.md. `A3`
+// (IFMSRPD0036) and `G7` (IFMSRPD0037/0038) spell it identically — `A3` is
+// `G7` with the book removed — so these are stated once.
+const OFF_PRICE: usize = 47;
+const OFF_QTY: usize = 56;
+const OFF_CUMULATIVE_QTY: usize = 119;
+const OFF_AGGRESSOR: usize = 153;
+const OFF_DYN_UPPER: usize = 154;
+const OFF_DYN_LOWER: usize = 163;
+
+/// End of the derivative trade block — where `G7`'s book starts and where
+/// `A3`'s end keyword sits.
+pub const TRADE_BLOCK_END: usize = 172;
+
+/// Reads the derivative trade block at `[47:172]`.
 ///
-/// `venue_ns` is only marked valid when the message actually spelled a time:
-/// a blank 매매처리시각 is "not measurable", and the consumer must not age a
-/// book against a zero.
-#[inline]
-pub fn fill_record_header(
-    h: &mut jeed_wire::RecordHeader,
-    msg: &Header,
-    recv_ns: UnixNano,
-    price_scale: Scale,
-) {
-    h.isin = msg.isin;
-    h.recv_ns = recv_ns;
-    if let Some(tod) = msg.time_of_day_ns {
-        h.set_venue_time(crate::clock::absolute_ns(tod, recv_ns));
+/// Shared by `A3` and `G7` because the two spell it byte for byte alike: the
+/// print, the running totals, the aggressor code and the dynamic band.
+pub fn fill_trade(payload: &[u8]) -> Result<TradePayload, KrxError> {
+    let price = field::decimal(slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
+    let qty = field::uint(slice(payload, OFF_QTY, 9), OFF_QTY)?;
+    let cumulative = field::uint(slice(payload, OFF_CUMULATIVE_QTY, 12), OFF_CUMULATIVE_QTY)?;
+    let dyn_upper = field::decimal(slice(payload, OFF_DYN_UPPER, 9), OFF_DYN_UPPER)?;
+    let dyn_lower = field::decimal(slice(payload, OFF_DYN_LOWER, 9), OFF_DYN_LOWER)?;
+
+    let mut trade = TradePayload::new(price.map_or(0, |d| d.value), qty.unwrap_or(0));
+
+    if let Some(c) = cumulative {
+        trade.with_cumulative_qty(c);
     }
-    h.set_scales(price_scale, Scale::S0);
+
+    // 매도매수구분코드: space 단일가체결 / '0' 해당없음 / '1' 매도 / '2' 매수.
+    // The first two are both "there was no aggressor" — an auction cross has
+    // none by definition — so they collapse to UNKNOWN. That is distinct from
+    // NONE, which means the channel has no such field at all.
+    trade.with_kind(match payload[OFF_AGGRESSOR] {
+        b'1' => trade_kind::SELL,
+        b'2' => trade_kind::BUY,
+        _ => trade_kind::UNKNOWN,
+    });
+
+    // KRX cannot say "not applicable": instruments outside the dynamic limit
+    // regime (far-month futures, spreads) carry `000000.00` rather than blanks.
+    // A real band always has both sides above zero, so that is the test — and
+    // the answer rides in a flag so the consumer never has to make it again.
+    if let (Some(u), Some(l)) = (dyn_upper, dyn_lower)
+        && u.value > 0
+        && l.value > 0
+    {
+        trade.with_dyn_limits(u.value, l.value);
+    }
+
+    Ok(trade)
+}
+
+/// Price scale of a trade block read on its own, where there is no book to
+/// read it from.
+///
+/// The scale is a property of the instrument, not the message, so any price
+/// field spells it; 체결가격 is the one always present.
+#[inline]
+pub fn trade_price_scale(payload: &[u8]) -> Result<Scale, KrxError> {
+    let price = field::decimal(slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
+    let decimals = price.map_or(0, |d| d.decimals);
+    Scale::from_decimals(decimals as usize).ok_or(KrxError::Overflow { at: OFF_PRICE })
 }

@@ -1,0 +1,17 @@
+[package]
+name = "jeed-convert"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fixed-width ASCII numeric parsing (SWAR), ported from fractal-engine"
+
+# No dependencies, deliberately. The serde/deepsize derives the original carried
+# were for config files and memory accounting; neither happens on the receive
+# path, and both would put a version constraint on the consumer.
+[dependencies]
+# `Scale` only. jeed-wire itself has no dependencies, and keeping one Scale in
+# the workspace means a scale stamped on a record is the same type the parser
+# was configured with.
+jeed-wire = { path = "../jeed-wire" }

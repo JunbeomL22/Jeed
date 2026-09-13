@@ -37,7 +37,12 @@ JEED_INTERFACES = [
     ("IFMSRPD0043", "V1 파생 가격제한폭확대발동"),
     ("IFMSRPD0042", "Q2 파생 동적상하한가 적용 및 해제"),
     ("IFMSRPD0019", "M4 장운영스케줄공개"),
-    ("IFMSRPD0003", "B7 증권 우선호가 (MM/LP호가 포함)"),
+    ("IFMSRPD0002", "B6 주식 우선호가 (MM/LP호가 제외)"),
+    ("IFMSRPD0003", "B7 ETF·ELW·ETN 우선호가 (MM/LP호가 포함)"),
+    ("IFMSRPD0004", "A3 증권 체결 (주식·ETF 공통)"),
+    ("IFMSRPD0023", "B6 일반채권·국고채권 우선호가"),
+    ("IFMSRPD0027", "A3 채권 체결"),
+    ("IFMSRPD0029", "G7 일반채권·국고채권 체결 + 우선호가"),
 ]
 
 
