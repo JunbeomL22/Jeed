@@ -35,7 +35,7 @@ jeed/
 ├─ Cargo.toml            [workspace]
 └─ crates/
    ├─ jeed-wire/         ABI. 의존성 0
-   ├─ jeed-shm/          Windows named mapping + SPSC 링 (producer/consumer)
+   ├─ jeed-shm/          named mapping(Win32) / shm_open(POSIX) + SPSC 링 (producer/consumer)
    ├─ jeed-krx/          UDP 수신 + 전문 디코더 → WireRecord
    ├─ jeed-fix/          FIX 프로토콜 → MdMessage → WireRecord
    └─ jeed/              바이너리 2개 (krx, fix)
@@ -58,7 +58,7 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
 - `Venue` / `Isin` / `Scale` 은 **헤더 필드 자체**라 `jeed-wire` 에 둔다. `jeed-types` 를 따로 만들지 않는다.
 - KRX 의 ASCII 고정폭 extractor 는 `jeed-krx` 안에 둔다. FIX 는 tag-value 라 안 쓴다 —
   공용으로 빼면 소비자가 하나뿐인 크레이트가 생긴다.
-- `jeed-shm` 분리 이유: unsafe 와 Windows API 가 여기만 모인다. 그리고 wire 는 파일·parquet
+- `jeed-shm` 분리 이유: unsafe 와 OS API 가 여기만 모인다. 그리고 wire 는 파일·parquet
   경로에서도 쓰이는데 거긴 shm 이 필요 없다.
 - **핸들러 lib 은 `jeed-shm` 에 의존하지 않는다.** 싱크 트레이트(`fn publish(&mut self, &WireRecord)`)에
   쓰고 바이너리가 shm 링에 연결한다. 테스트는 `Vec<WireRecord>` 싱크로 돈다.
@@ -365,6 +365,26 @@ spin 이냐 block 이냐가 실제 동작이다.
       필터 순서는 trcode → 길이 → ISIN → 슬롯: 뒤로 갈수록 비싸다.
       `STALE` 판정은 디코더가 아니라 여기서 한다 (§8 — 근거가 아니라 결론을 싣는다)
 - [ ] **`jeed-fix`** — 프로토콜 층 그대로. 베뉴 어댑터 없이 `MdMessage` 까지
+- [x] **`jeed-krx`·`jeed-shm` 리눅스 포팅** (2026-09-13) — WSL(cargo 1.97.1)에서 전부 통과,
+      clippy 경고 0. Windows 도 그대로 통과한다(양쪽 다 돌렸다). `unsafe extern` 이 모인 두
+      곳만 `windows.rs`/`posix.rs` 로 갈랐다 — `jeed-shm/src/mapping/` 과
+      `jeed-krx/src/recv/socket/`. 그 위층(`SharedMapping`·`FeedSocket`·`Poller`·`Receiver`)은
+      `#[cfg]` 이 한 줄도 없다.
+      **커널이 실제로 다른 지점은 셋뿐이고, 나머지는 이름만 다르다:**
+      ① **bind** — 리눅스는 그룹 주소 bind 를 받으므로 목적지가 디먹스에 참여하고
+      `IP_MULTICAST_ALL`(`INADDR_ANY` 소켓에 호스트가 가입한 모든 그룹을 꽂아주는 knob)도
+      피해 간다. 윈도우는 `INADDR_ANY` 뿐이다(아래 ⚠️). 포트 중복 거부는 **양쪽 다** 건다 —
+      둘 중 엄한 쪽을 택해야 conf 하나가 두 플랫폼에서 유효하다.
+      ② **객체 수명** — 윈도우 섹션은 마지막 핸들과 함께 죽고, POSIX 이름은 `shm_unlink`
+      전까지 `/dev/shm` 에 남는다. 그래서 리눅스에선 `existed()` 가 **더 약한 증거**다
+      (죽은 프로세스의 이름이 그대로 남아 있다). 재기동 판별의 권위는 여전히 `boot_id` 다.
+      `unlink` 는 윈도우에서 `Ok(())` 무동작 — 호출부를 한 번만 쓰기 위해서다.
+      ③ **`SO_RCVBUF`** — 리눅스는 요청값을 **두 배로 기록하고 두 배로 돌려주며**,
+      `CAP_NET_ADMIN` 없이는 `net.core.rmem_max`(흔히 208 KiB)에서 잘린다. 8 MiB 를 달라고
+      해서 8 MiB 를 받는 게 아니므로 `recv_buffer_bytes()` 되읽기가 여기서 진짜로 일한다.
+      그리고 리눅스는 버퍼보다 큰 데이터그램을 **에러 없이 잘라서** 준다(`WSAEMSGSIZE` 상당이
+      없다) — 잘린 전문은 길이 검사에 걸려 거부되므로 반쯤 디코드될 일은 없고, 소켓 에러가
+      아니라 길이 불일치로 세어진다.
 - [ ] **`jeed` 바이너리** — conf 로딩, 코어 핀, 세그먼트 생성, 소켓 가입, 기동 검증
 - [ ] **pcap 리플레이 검증** — `E:/Data/krx_pcap` 을 넣어 §4 의 대조 + 종료키워드·길이 통계
 
@@ -810,6 +830,11 @@ decode/
 (10302 선물 / 10322 콜 / 10323 풋) 실무상 걸릴 일은 없다.
 
 `SO_REUSEADDR` 는 남겨 둔다 — 핸들러가 도는 중에 캡처·진단 도구가 같은 포트를 듣게 해 준다.
+
+**리눅스는 그룹 bind 를 받는다** (2026-09-13 WSL 확인). 그래서 `posix.rs` 는 유닉스 습관대로
+그룹 주소에 bind 하고, 소켓은 자기 그룹만 받는다. 그런데도 **포트 중복 거부는 양쪽 다 건다** —
+둘 중 엄한 쪽이 규칙이어야 conf 파일 하나가 두 플랫폼에서 같은 뜻이 된다. 리눅스에서만 되는
+설정을 허용하면 윈도우로 옮기는 순간 조용히 두 배로 발행된다.
 
 ### 수신부 설계 시 전제
 

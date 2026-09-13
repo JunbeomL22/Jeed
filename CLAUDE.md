@@ -20,7 +20,7 @@ Jeed (**J**unbeom f**eed** handler) — KRX UDP 멀티캐스트와 FIX 4.4 를 �
 crates/
   jeed-wire/   와이어 레코드 ABI. 의존성 0. 소비자가 의존하는 유일한 것
   jeed-convert/ 고정폭 ASCII 수치 파서 (SWAR). fractal-engine 에서 포팅
-  jeed-shm/    Windows named mapping + SPSC 링 (producer/consumer)
+  jeed-shm/    named mapping(Win32) / shm_open(POSIX) + SPSC 링 (producer/consumer)
   jeed-krx/    KRX UDP 수신 + 전문 디코더 → WireRecord
   jeed-fix/    FIX 4.4 프로토콜 → MdMessage → WireRecord
   jeed/        바이너리 (krx, fix)

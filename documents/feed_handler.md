@@ -47,6 +47,10 @@ rtrb 로 다른 스레드에 넘기는 건 라우터 부활이므로 금지.
 - Windows: `CreateFileMapping(INVALID_HANDLE_VALUE, …)` + `MapViewOfFile` 로
   **페이지파일 백업 named mapping**. 파일 백업 mmap 은 플러시가 끼어 피한다.
   블로킹 폴백이 필요하면 `WaitOnAddress`/`WakeByAddressSingle`.
+- Linux: `shm_open` + `ftruncate` + `mmap(MAP_SHARED)` — `/dev/shm` 은 tmpfs 라
+  마찬가지로 파일 백업이 아니다. **수명 규칙만 반대다:** 윈도우 섹션은 마지막 핸들과 함께
+  죽고, POSIX 이름은 `shm_unlink` 전까지 남는다. 그래서 리눅스에선 "이름이 이미 있다"가
+  살아 있는 생산자를 뜻하지 않는다 — 재기동 판별은 §7 대로 `boot_id` 가 한다.
 
 ## 4. 세 층 — 와이어 타입은 정규화 포맷과 별개다
 
@@ -435,6 +439,11 @@ VBS+HVCI 실행 중(하이퍼바이저 위), SMT 켜짐(= 격리 코어 1개 = �
 진짜 sub-µs 가 필요해지면 그건 튜닝이 아니라 Linux + 커널바이패스(onload) 이주 문제고,
 `KrxUdpReceiver` 주석의 onload 언급이 이미 그 전제다. Windows 전용 API 는 얇은 레이어
 뒤에 숨겨 두는 정도가 보험으로 적당하다.
+
+**보험은 2026-09-13 에 찾았다.** `jeed-shm`·`jeed-krx` 가 리눅스에서 돈다 (WSL 전체 통과,
+clippy 0). 갈린 건 `unsafe extern` 이 모인 두 디렉터리(`mapping/`, `recv/socket/`)뿐이고
+그 위층엔 `#[cfg]` 이 없다. 즉 **이주는 이제 튜닝 문제지 포팅 문제가 아니다** — 남는 일은
+코어 격리와 NIC 쪽이고, 그건 리눅스가 원래 잘하는 것들이다.
 
 ## 15. 미결
 
