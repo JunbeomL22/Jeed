@@ -1,3 +1,4 @@
+use jeed_convert::ParseErr;
 use jeed_convert::extractor::DynamicExtractor;
 
 #[test]
@@ -545,3 +546,56 @@ fn test_dynamic_extractor_debug() {
     assert!(debug_str.contains("target_decimals"));
 }
 
+
+// ============================================================================
+// to_i64_exact / to_u64_exact — the readers that refuse to round
+// ============================================================================
+
+#[test]
+fn exact_keeps_what_the_plain_reader_truncates() {
+    let e = DynamicExtractor::new(2);
+    // The plain reader is right for a fixed-width field and wrong for venue
+    // text: a truncated price is still a plausible-looking price.
+    assert_eq!(e.to_i64(b"0.000015"), Ok(0));
+    assert_eq!(e.to_i64_exact(b"0.000015"), Err(ParseErr::Precision));
+}
+
+#[test]
+fn exact_accepts_the_trailing_zeros_crypto_venues_pad_with() {
+    // Binance sends every size at the symbol's full precision, so the digits
+    // past a shorter configured scale are normally zeros.
+    let e = DynamicExtractor::new(5);
+    assert_eq!(e.to_u64_exact(b"3.84410000"), Ok(384_410));
+    assert_eq!(e.to_i64_exact(b"4712.06000000"), Ok(471_206_000));
+}
+
+#[test]
+fn exact_accepts_fewer_decimals_than_the_scale() {
+    let e = DynamicExtractor::new(4);
+    assert_eq!(e.to_i64_exact(b"25.35"), Ok(253_500));
+    assert_eq!(e.to_i64_exact(b"25"), Ok(250_000));
+}
+
+#[test]
+fn exact_keeps_the_sign() {
+    let e = DynamicExtractor::new(2);
+    assert_eq!(e.to_i64_exact(b"-12.3400"), Ok(-1_234));
+    assert_eq!(e.to_u64_exact(b"-12.34"), Err(ParseErr::NegOverflow));
+}
+
+#[test]
+fn exact_refuses_a_digit_string_that_would_wrap_the_accumulator() {
+    // try_parse folds into an i64 with no overflow check, so the guard is the
+    // digit count rather than the value.
+    let e = DynamicExtractor::new(2);
+    assert_eq!(e.to_i64_exact(b"12345678901234567890.00"), Err(ParseErr::Overflow));
+    assert_eq!(e.to_i64_exact(b"123456789012345.00"), Ok(12_345_678_901_234_500));
+}
+
+#[test]
+fn exact_rejects_what_is_not_a_number() {
+    let e = DynamicExtractor::new(2);
+    assert_eq!(e.to_i64_exact(b""), Err(ParseErr::Empty));
+    assert_eq!(e.to_i64_exact(b"abc"), Err(ParseErr::InvalidDigit));
+    assert_eq!(e.to_i64_exact(b"1.2.3"), Err(ParseErr::InvalidDigit));
+}

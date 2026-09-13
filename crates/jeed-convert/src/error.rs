@@ -22,6 +22,14 @@ pub enum ParseErr {
     InvalidLength,
     /// Division by zero attempted.
     DivideByZero,
+    /// A fractional digit the target scale cannot keep was **not** zero.
+    ///
+    /// Only the `*_exact` readers raise this. The plain readers truncate, which
+    /// is right for a fixed-width field whose width the standard fixes, and
+    /// wrong for venue text whose precision the venue chooses: `"0.000015"`
+    /// read at two decimals is `0`, and a zero price is a plausible-looking
+    /// value. See `jeed_convert::DynamicExtractor::to_i64_exact`.
+    Precision,
 }
 
 impl std::fmt::Display for ParseErr {
@@ -36,6 +44,7 @@ impl std::fmt::Display for ParseErr {
             ParseErr::InvalidPointLocation => write!(f, "invalid point location"),
             ParseErr::DivideByZero => write!(f, "divide by zero"),
             ParseErr::InvalidLength => write!(f, "invalid length"),
+            ParseErr::Precision => write!(f, "value has more decimals than the scale keeps"),
         }
     }
 }
@@ -55,6 +64,7 @@ impl ParseErr {
             ParseErr::InvalidPointLocation => "InvalidPointLocation",
             ParseErr::DivideByZero => "DivideByZero",
             ParseErr::InvalidLength => "InvalidLength",
+            ParseErr::Precision => "Precision",
         }
     }
 }

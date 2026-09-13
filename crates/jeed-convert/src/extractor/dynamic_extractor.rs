@@ -5,6 +5,10 @@
 use crate::ParseErr;
 use jeed_wire::Scale;
 
+/// Most significant digits the `i64` accumulator takes before it can wrap.
+/// `i64::MAX` is 19 digits, so 18 is safe for any digit string.
+const MAX_EXACT_DIGITS: usize = 18;
+
 /// Dynamic decimal extractor for variable-length decimal strings.
 ///
 /// Unlike [`FixedExtractor`](super::FixedExtractor), handles variable-length input
@@ -237,6 +241,96 @@ impl DynamicExtractor {
     pub fn to_i128(&self, data: &[u8]) -> Result<i128, ParseErr> {
         let val = self.try_parse(data).ok_or(ParseErr::InvalidDigit)?;
         Ok(val as i128)
+    }
+
+    /// Parses an `i64`, refusing to drop a fractional digit that is not zero.
+    ///
+    /// [`to_i64`](Self::to_i64) truncates — `"0.000015"` at two decimals is
+    /// `0`. That is the right answer for a fixed-width field whose width the
+    /// standard fixes, and the wrong one for venue text, where the venue
+    /// chooses how many decimals to send and a truncated price is still a
+    /// plausible-looking number. Crypto venues pad with trailing zeros
+    /// (`"3.84410000"`), so the digits past the scale are normally zeros and
+    /// this costs one comparison per message; when they are not zeros, the
+    /// instrument's configured scale is wrong and the message must be dropped,
+    /// not rounded.
+    ///
+    /// Also refuses more than 18 significant digits, where the accumulator
+    /// would wrap silently.
+    ///
+    /// # Example
+    /// ```
+    /// use jeed_convert::{extractor::DynamicExtractor, ParseErr};
+    ///
+    /// let e = DynamicExtractor::new(2);
+    /// assert_eq!(e.to_i64_exact(b"3.8400"), Ok(384));
+    /// assert_eq!(e.to_i64_exact(b"3.845"), Err(ParseErr::Precision));
+    /// ```
+    #[inline]
+    pub fn to_i64_exact(&self, data: &[u8]) -> Result<i64, ParseErr> {
+        self.check_exact(data)?;
+        self.try_parse(data).ok_or(ParseErr::InvalidDigit)
+    }
+
+    /// [`to_i64_exact`](Self::to_i64_exact) for an unsigned field.
+    #[inline]
+    pub fn to_u64_exact(&self, data: &[u8]) -> Result<u64, ParseErr> {
+        let val = self.to_i64_exact(data)?;
+        if val < 0 { Err(ParseErr::NegOverflow) } else { Ok(val as u64) }
+    }
+
+    /// The whole guard for the `*_exact` readers: syntax, digit count, and
+    /// dropped precision, in that order.
+    ///
+    /// It runs **before** [`try_parse`](Self::try_parse) rather than after,
+    /// because `try_parse` folds digits into an `i64` with no overflow check —
+    /// a twenty-digit string panics there in a debug build and wraps in a
+    /// release one, so the count has to be refused first. Order also decides
+    /// which error the caller gets for `"1.2.3"`: that is a malformed field,
+    /// not a precision problem, and the two want different reactions.
+    ///
+    /// Kept out of `try_parse` itself: the plain readers are on the KRX path,
+    /// where truncating a fixed-width field is the defined behaviour, and must
+    /// keep costing nothing.
+    fn check_exact(&self, data: &[u8]) -> Result<(), ParseErr> {
+        if data.is_empty() {
+            return Err(ParseErr::Empty);
+        }
+        let body = match data[0] {
+            b'-' | b'+' => &data[1..],
+            _ => data,
+        };
+
+        let mut digits = 0usize;
+        let mut point: Option<usize> = None;
+        for (i, &b) in body.iter().enumerate() {
+            if b.is_ascii_digit() {
+                digits += 1;
+            } else if b == b'.' && point.is_none() {
+                point = Some(i);
+            } else {
+                return Err(ParseErr::InvalidDigit);
+            }
+        }
+        if digits == 0 {
+            return Err(ParseErr::InvalidDigit);
+        }
+        if digits > MAX_EXACT_DIGITS {
+            return Err(ParseErr::Overflow);
+        }
+
+        let Some(point) = point else {
+            return Ok(());
+        };
+        let frac = &body[point + 1..];
+        if frac.len() <= self.target_decimals {
+            return Ok(());
+        }
+        if frac[self.target_decimals..].iter().all(|&b| b == b'0') {
+            Ok(())
+        } else {
+            Err(ParseErr::Precision)
+        }
     }
 
     /// Parses an `f32` from the data slice.
