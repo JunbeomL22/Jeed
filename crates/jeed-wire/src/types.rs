@@ -7,20 +7,61 @@
 //! size the ABI carries.
 //!
 //! Deliberately absent: process-local interned identifiers. An interning
-//! counter is per-process, so the same ISIN gets a different id in the feed
-//! handler and in the consumer — identity crosses the boundary as raw
-//! `(venue, isin)` and the consumer resolves it (`documents/feed_handler.md` §6).
+//! counter is per-process, so the same instrument gets a different id in the
+//! feed handler and in the consumer — identity crosses the boundary as raw
+//! `(venue, symbol)` and the consumer resolves it
+//! (`documents/feed_handler.md` §6).
 //!
 //! [`RecordHeader`]: crate::RecordHeader
 
-/// Length of an ISIN code in bytes.
-pub const ISIN_LEN: usize = 12;
-
-/// Raw ISIN bytes, exactly as the venue sent them.
+/// Width of the header's symbol field in bytes.
 ///
-/// For venues that quote something other than a listed security (an FX pair,
-/// say) this carries the venue's own symbol, left-aligned and space-padded.
-pub type Isin = [u8; ISIN_LEN];
+/// Twenty-four rather than an ISIN's twelve because the venue's own name for
+/// the instrument is what crosses the boundary, and not every venue names
+/// instruments in twelve bytes: Binance USD-M lists `1000000MOGUSDT` (14) and
+/// an OKX option is `BTC-USD-240329-70000-C` (22). A KRX ISIN uses the first
+/// twelve and leaves the rest `NUL`.
+pub const SYMBOL_LEN: usize = 24;
+
+/// The venue's own name for the instrument, exactly as it sent it:
+/// left-aligned and `NUL`-padded.
+///
+/// For KRX this is the twelve-byte ISIN. For a crypto venue it is the venue
+/// symbol in the venue's own casing (`BTCUSDT`, `KRW-BTC`) — **not** a
+/// normalised pair name, because normalising is a mapping and a mapping is
+/// the consumer's (`documents/feed_handler.md` §6).
+///
+/// `NUL` rather than space padding so that an all-zero slot stays all-zero and
+/// the trailing pad is unambiguous: no venue puts a `NUL` in a symbol.
+pub type Symbol = [u8; SYMBOL_LEN];
+
+/// Builds a [`Symbol`] from a venue symbol, `NUL`-padding the tail.
+///
+/// `None` if the input is empty, longer than [`SYMBOL_LEN`], or contains a
+/// `NUL` (which would make the padding ambiguous).
+#[inline]
+pub const fn symbol_from_bytes(bytes: &[u8]) -> Option<Symbol> {
+    if bytes.is_empty() || bytes.len() > SYMBOL_LEN {
+        return None;
+    }
+    let mut out = [0u8; SYMBOL_LEN];
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0 {
+            return None;
+        }
+        out[i] = bytes[i];
+        i += 1;
+    }
+    Some(out)
+}
+
+/// The symbol without its `NUL` padding.
+#[inline]
+pub fn symbol_bytes(symbol: &Symbol) -> &[u8] {
+    let len = symbol.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
+    &symbol[..len]
+}
 
 /// Price in `price_scale` units. Signed — yields and spreads go negative.
 pub type BookPrice = i64;
@@ -56,6 +97,47 @@ pub enum Venue {
 
     /// 서울외국환중개 (Seoul Money Brokerage Services) — USDKRW spot.
     Smbs = 2,
+
+    /// Binance spot.
+    BinanceSpot = 3,
+
+    /// Binance USD-M futures.
+    ///
+    /// A separate venue from [`BinanceSpot`](Self::BinanceSpot) rather than a
+    /// market flag beside it, because `BTCUSDT` names a different instrument
+    /// on each and `(venue, symbol)` is the identity. COIN-M, when it arrives,
+    /// takes a byte of its own for the same reason.
+    BinanceFutures = 4,
+
+    /// Upbit (spot only — Korean law does not let a domestic exchange list
+    /// crypto derivatives).
+    Upbit = 5,
+
+    /// Bithumb (spot only, same reason).
+    ///
+    /// Its own byte even though the message format is Upbit's: the two are
+    /// different order books with different prices, and `KRW-BTC` is the
+    /// symbol on both. Sharing a byte would merge them.
+    Bithumb = 6,
+
+    /// OKX — every market, on one byte.
+    ///
+    /// The exception to the rule the Binance and Bybit entries follow, because
+    /// OKX's `instId` already separates the markets: `BTC-USDT` is spot,
+    /// `BTC-USDT-SWAP` the perpetual, `BTC-USDT-240329` the future and
+    /// `BTC-USD-240329-70000-C` an option. There is no collision to break.
+    Okx = 7,
+
+    /// Bybit spot.
+    BybitSpot = 8,
+
+    /// Bybit USDT/USDC linear perpetuals and futures.
+    ///
+    /// Split from [`BybitSpot`](Self::BybitSpot) on the Binance grounds and
+    /// not the OKX ones: Bybit spells the linear perpetual `BTCUSDT`, exactly
+    /// as it spells the spot pair, and only the endpoint tells them apart.
+    /// Inverse contracts, when they arrive, take a third byte.
+    BybitLinear = 9,
 }
 
 impl Venue {
@@ -66,6 +148,13 @@ impl Venue {
             Self::Krx => "KRX",
             Self::Nxt => "NXT",
             Self::Smbs => "SMBS",
+            Self::BinanceSpot => "BINANCE_SPOT",
+            Self::BinanceFutures => "BINANCE_FUTURES",
+            Self::Upbit => "UPBIT",
+            Self::Bithumb => "BITHUMB",
+            Self::Okx => "OKX",
+            Self::BybitSpot => "BYBIT_SPOT",
+            Self::BybitLinear => "BYBIT_LINEAR",
         }
     }
 
@@ -82,6 +171,13 @@ impl Venue {
             0 => Some(Self::Krx),
             1 => Some(Self::Nxt),
             2 => Some(Self::Smbs),
+            3 => Some(Self::BinanceSpot),
+            4 => Some(Self::BinanceFutures),
+            5 => Some(Self::Upbit),
+            6 => Some(Self::Bithumb),
+            7 => Some(Self::Okx),
+            8 => Some(Self::BybitSpot),
+            9 => Some(Self::BybitLinear),
             _ => None,
         }
     }
@@ -93,6 +189,13 @@ impl Venue {
             "KRX" => Some(Self::Krx),
             "NXT" => Some(Self::Nxt),
             "SMBS" => Some(Self::Smbs),
+            "BINANCE_SPOT" => Some(Self::BinanceSpot),
+            "BINANCE_FUTURES" => Some(Self::BinanceFutures),
+            "UPBIT" => Some(Self::Upbit),
+            "BITHUMB" => Some(Self::Bithumb),
+            "OKX" => Some(Self::Okx),
+            "BYBIT_SPOT" => Some(Self::BybitSpot),
+            "BYBIT_LINEAR" => Some(Self::BybitLinear),
             _ => None,
         }
     }

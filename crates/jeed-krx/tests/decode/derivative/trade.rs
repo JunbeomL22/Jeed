@@ -23,7 +23,7 @@ fn a_print_round_trips_into_a_trade_record() {
 
     assert_eq!(rec.validate(), Ok(()));
     assert_eq!(rec.kind(), Ok(WireKind::Trade));
-    assert_eq!(rec.header.isin, *b"KR4101V90009");
+    assert_eq!(rec.header.symbol_bytes(), b"KR4101V90009");
 
     let t = rec.trade().unwrap();
     assert_eq!(t.price, 93700);

@@ -118,6 +118,18 @@ pub enum WireError {
         /// Raw action byte.
         found: u8,
     },
+
+    /// A snapshot delta claims more changed levels than the payload holds.
+    DeltaLevelCount {
+        /// Bid changes claimed.
+        bid: u8,
+
+        /// Ask changes claimed.
+        ask: u8,
+
+        /// Levels the payload holds, across both sides.
+        max: u8,
+    },
 }
 
 impl WireError {
@@ -158,6 +170,9 @@ impl fmt::Display for WireError {
             }
             Self::DynLimitAction { found } => {
                 write!(f, "unknown wire dynamic limit action {found}")
+            }
+            Self::DeltaLevelCount { bid, ask, max } => {
+                write!(f, "wire delta carries {bid} bid + {ask} ask changes, holds {max}")
             }
         }
     }

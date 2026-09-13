@@ -126,6 +126,21 @@ contract*" 라고 적고 있다. **backtest 리플레이도 와이어 레코드�
 | `isin` | [u8;12] | `Isin = [u8; ISIN_LEN]`, `ISIN_LEN = 12` |
 | `_pad1` | [u8;4] | 명시 패딩(0). 오프셋: kind 0 · venue 1 · flags 2 · depth 3 · scales 4-5 · producer_seq 8 · recv_ns 16 · venue_ns 24 · isin 32 |
 
+> **Jeed 에서는 헤더가 64B 다** (`WIRE_FORMAT_VERSION = 2`, 2026-09-13). `isin: [u8;12]` 이
+> `symbol: [u8;24]` 이 되고 `_pad1` 이 8바이트가 됐다 — 크립토 심볼이 12바이트에 안 들어간다
+> (`1000000MOGUSDT` 14, OKX 옵션 `BTC-USD-240329-70000-C` 22). **레코드는 640B 그대로**:
+> 헤더가 꼬리 패딩(48→32)을 먹었을 뿐이다. `Venue` 에는 `BinanceSpot = 3` ·
+> `BinanceFutures = 4` 가 붙었다 — 같은 `BTCUSDT` 가 두 시장에서 다른 종목이라 베뉴를
+> 공유하면 식별자가 충돌한다.
+>
+> **v3 (2026-09-13)** 은 레이아웃을 안 건드리고 베뉴만 늘렸다: `Upbit = 5` ·
+> `Bithumb = 6` · `Okx = 7` · `BybitSpot = 8` · `BybitLinear = 9`. **베뉴를 몇 개 쓰느냐는
+> 모듈을 몇 개 쓰느냐와 다른 질문이다** — OKX 는 `instId` 가 이미 시장을 가르므로
+> (`BTC-USDT` / `BTC-USDT-SWAP` / `BTC-USD-240329-70000-C`) 전 시장이 바이트 하나고,
+> 바이비트는 전문이 스팟·리니어 공통인데도 `BTCUSDT` 가 충돌하므로 둘이다. 소비자가 모르는
+> 베뉴 바이트는 이미 거부되는 레코드이므로(`Venue::from_u8`), 버전을 올리는 건 레이아웃
+> 통보가 아니라 "이제 거부하지 말라" 는 신호다.
+
 ### 페이로드 528B · 레코드 576B (구현 2026-09-13, `src/data/common/wire/`)
 
 > **Jeed 에서는 페이로드 544B · 레코드 640B 다.** `TradePayload` 가 32 → 48B 로 늘었다
@@ -148,7 +163,15 @@ contract*" 라고 적고 있다. **backtest 리플레이도 와이어 레코드�
   PriceLimit 40B · MarketSchedule 72B(범위 필드 원문 보존) · Heartbeat 16B(`received`/`forwarded`
   카운터 — "조용한 시장" 과 "필터가 다 걸러냄" 구분).
 - **레코드 = 48 + 528 = 576B, `align(64)`** — 9 캐시라인, tail 패딩 0 (합이 안 맞으면 명시 tail 이 생긴다). 링이 배열이 되고 커서가 인덱스가 된다.
-- kind 0 은 미사용 → **0 으로 채워진 슬롯은 무효**. `SnapshotDelta` 는 kind 만 예약, 페이로드 미정의.
+- kind 0 은 미사용 → **0 으로 채워진 슬롯은 무효**. ~~`SnapshotDelta` 는 kind 만 예약,
+  페이로드 미정의.~~ → **Jeed v2 에서 정의됐다** (2026-09-13, binance `@depth` 를 받으면서):
+  `SnapshotDeltaPayload` 544B = 16B 델타 레벨 × 32단(양쪽 공유) + `U`/`u`/`pu` + 카운트.
+  32단을 넘는 메시지는 **자르지 않고 프레임을 버린다** — 자른 델타는 소비자가 완전한 것으로
+  받아들이고 영영 못 고친다. 버리면 갱신ID 사슬에 구멍이 나고 소비자가 리싱크한다.
+  `pu` 슬롯(`prev_final_update_id` + `PREV_FINAL_VALID`)은 OKX `prevSeqId` 도 쓴다 —
+  *이 메시지가 어느 것을 따라야 하는가* 라는 같은 질문의 답이다. 바이비트와 바이낸스 스팟은
+  그런 필드를 안 보내므로 슬롯이 **비어 있고**, 0 이 아니다: "이 베뉴는 선행 메시지를 명시하지
+  않는다" 와 "선행 메시지가 0번이다" 는 다른 말이다.
 - 시각은 프로젝트 타입 그대로 `u64`(`UnixNano`); 차는 `saturating_sub`(`RecordHeader::venue_age_ns`).
 - 세그먼트 헤더 128B(2 캐시라인): 첫 줄 상수(magic `FE_WIRE1` · version · record_size · capacity · boot_id),
   둘째 줄 producer 커서(`write_cursor` Release/Acquire · `drop_counter`). `check()` 가 version/record_size
@@ -402,11 +425,17 @@ SMBS 는 FIX 를 쓰는 한 곳일 뿐이고, 두 번째 FIX 베뉴가 오면 �
   반올림 지점이 아래로 새지 않는다. 스케일이 못 담는 소수는 **반올림이 아니라 에러**
   (`FixError::Precision`) — 설정 버그가 가격으로 위장하면 안 된다.
 - **venue 시각은 `272`+`273`**, `52`(SendingTime)는 상대 시계라 측정용으로만 싣는다.
-- SMBS 방언은 셋뿐이다: 식별자가 심볼(`wire_isin` = 심볼 좌정렬 공백채움 12바이트,
+- SMBS 방언은 셋뿐이다: 식별자가 심볼(`wire_isin` = 심볼 좌정렬 공백채움 12바이트 —
+  Jeed v2 에서는 24바이트 `NUL` 채움,
   backtest `SmbsFeedSource::wire_isin` 도 이 함수를 부른다), 호가에 수량이 없어
   `SmbsMdConfig::default_quote_size` 로 채움, 체결에 공격자 방향 없음(`trade_kind::NONE`).
 - **35=X 안의 호가 갱신은 거부한다**(`SmbsMdError::IncrementalBook`) — 와이어에 delta
   레코드가 아직 없으므로(§8 `SnapshotDelta` 예약) 조용히 버리면 OMS 북이 틀린다.
+
+  > **Jeed v2 에는 delta 레코드가 생겼다.** 그래도 거부는 그대로 둔다 — 실을 곳이 생긴 것과
+  > SMBS 의 35=X 가 실제로 어떤 갱신을 보내는지 아는 것은 다른 문제이고, FIX 베뉴 어댑터는
+  > 아직 없다(`documents/todo.md` §3). 크립토의 갱신ID 사슬에 해당하는 것이 SMBS 에 무엇인지
+  > 확인되기 전까지 거부가 맞다.
 
 검증: `tests/data/fix/` + `tests/data/exchanges/smbs/` **64건**. 그중 `capture.rs` 는
 `E:/Data/smbs_fix_db/20260202` 를 통째로 돌려 생성기 인덱스와 맞춘다 —

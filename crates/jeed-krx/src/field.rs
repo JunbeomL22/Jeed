@@ -34,7 +34,34 @@
 
 use crate::error::KrxError;
 use jeed_convert::{Biscuit, Extractor};
-use jeed_wire::{ISIN_LEN, Isin};
+use jeed_wire::{SYMBOL_LEN, Symbol};
+
+/// Width of a 종목코드 field in a KRX message.
+///
+/// A KRX constant, not a wire one: the wire's identity field is
+/// [`SYMBOL_LEN`] wide because other venues need the room
+/// (`jeed_wire::types`), and conflating the two would make a KRX layout
+/// offset move whenever a crypto venue lists a longer symbol.
+pub const ISIN_LEN: usize = 12;
+
+/// A 종목코드 as it sits in a message.
+pub type Isin = [u8; ISIN_LEN];
+
+/// Widens a KRX ISIN into the wire's symbol field, `NUL`-padding the tail.
+///
+/// Total, not fallible: `ISIN_LEN` is a compile-time-checked twelve and the
+/// wire field is twenty-four, so there is no input this can refuse.
+#[inline]
+pub const fn wire_symbol(isin: &Isin) -> Symbol {
+    const _: () = assert!(ISIN_LEN <= SYMBOL_LEN);
+    let mut out = [0u8; SYMBOL_LEN];
+    let mut i = 0;
+    while i < ISIN_LEN {
+        out[i] = isin[i];
+        i += 1;
+    }
+    out
+}
 
 /// Nanoseconds in one day — a time-of-day reading is always below this.
 pub const NS_PER_DAY: u64 = 24 * 60 * 60 * 1_000_000_000;

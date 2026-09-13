@@ -34,7 +34,7 @@
 
 use crate::trcode::TrCode;
 use jeed_convert::{Config, Extractor};
-use jeed_wire::Isin;
+use crate::field::Isin;
 use std::sync::LazyLock;
 
 /// A signed fixed-width reader. `lead` is the **sign byte plus the integer

@@ -40,7 +40,7 @@ use crate::field;
 use crate::trcode::TrCode;
 use jeed_convert::ParseErr;
 use jeed_wire::{
-    BookYield, ISIN_LEN, QuotePayload, TradePayload, WIRE_MAX_DEPTH, WireLevel, level_ext,
+    BookYield, QuotePayload, TradePayload, WIRE_MAX_DEPTH, WireLevel, level_ext,
     trade_kind,
 };
 
@@ -99,7 +99,7 @@ pub fn header(payload: &[u8]) -> Result<Header, KrxError> {
         sequence: field::uint(slice(payload, OFF_SEQUENCE, 8), OFF_SEQUENCE)?,
         board: [payload[OFF_BOARD], payload[OFF_BOARD + 1]],
         session: [payload[OFF_SESSION], payload[OFF_SESSION + 1]],
-        isin: field::isin(slice(payload, OFF_ISIN, ISIN_LEN))?,
+        isin: field::isin(slice(payload, OFF_ISIN, field::ISIN_LEN))?,
         // 채권 does not carry one. Absent, not zero — the wire never sees it
         // either way, but "the field was not there" and "the field said zero"
         // are not the same claim.

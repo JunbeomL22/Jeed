@@ -94,7 +94,7 @@ impl DerivativePriceLimit {
             _pad: [0; 5],
         };
 
-        let mut h = RecordHeader::new(WireKind::PriceLimit, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::PriceLimit, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, price.scale().unwrap_or_default());
 
         *out = WireRecord::new_price_limit(h, payload_out);

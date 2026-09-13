@@ -10,7 +10,7 @@ use jeed_wire::{
 };
 
 fn trade(price: i64) -> WireRecord {
-    let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, *b"KR4101V90009", 1_785_455_100_000);
+    let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, jeed_wire::symbol_from_bytes(b"KR4101V90009").unwrap(), 1_785_455_100_000);
     h.set_scales(Scale::S2, Scale::S0);
     WireRecord::new_trade(h, TradePayload::new(price, 1))
 }

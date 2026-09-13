@@ -23,7 +23,7 @@ fn a_ten_deep_book_round_trips_into_a_quote_record() {
 
     assert_eq!(rec.validate(), Ok(()));
     assert_eq!(rec.kind(), Ok(WireKind::Quote));
-    assert_eq!(rec.header.isin, *b"KR7005930003");
+    assert_eq!(rec.header.symbol_bytes(), b"KR7005930003");
     assert_eq!(rec.header.venue, Venue::Krx.as_u8());
     assert_eq!(rec.header.depth, 10);
 

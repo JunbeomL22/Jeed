@@ -2,8 +2,9 @@
 
 use jeed_wire::{
     HeartbeatPayload, InvestorStatsPayload, MarketSchedulePayload, OpenInterestPayload,
-    PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload, WIRE_MAX_DEPTH,
-    WIRE_PAYLOAD_LEN, WireLevel, WirePayload, level_ext, quote_ext, trade_flags, trade_kind,
+    PriceLimitPayload, QuotePayload, SnapshotDeltaPayload, TradePayload, TradeQuotePayload,
+    WIRE_MAX_DELTA_LEVELS, WIRE_MAX_DEPTH, WIRE_PAYLOAD_LEN, WireDeltaLevel, WireLevel,
+    WirePayload, delta_flags, level_ext, quote_ext, trade_flags, trade_kind,
 };
 
 #[test]
@@ -17,6 +18,8 @@ fn payload_sizes_are_the_documented_ones() {
     assert_eq!(size_of::<PriceLimitPayload>(), 40);
     assert_eq!(size_of::<MarketSchedulePayload>(), 72);
     assert_eq!(size_of::<HeartbeatPayload>(), 16);
+    assert_eq!(size_of::<WireDeltaLevel>(), 16);
+    assert_eq!(size_of::<SnapshotDeltaPayload>(), 544);
 }
 
 #[test]
@@ -164,4 +167,87 @@ fn trade_quote_is_the_trade_and_the_book_it_left() {
     assert_eq!(tq.quote.ask[0].price, 93705);
     assert_eq!(core::mem::offset_of!(TradeQuotePayload, trade), 0);
     assert_eq!(core::mem::offset_of!(TradeQuotePayload, quote), 48);
+}
+
+// ============================================================================
+// Snapshot delta
+// ============================================================================
+
+/// A delta with `bids` bid changes and `asks` ask changes, prices numbered so
+/// a misread of the split shows up as a wrong price rather than a wrong count.
+fn delta(bids: u8, asks: u8) -> SnapshotDeltaPayload {
+    let mut d = SnapshotDeltaPayload::default();
+    for i in 0..bids as usize {
+        d.levels[i] = WireDeltaLevel { price: 1_000 + i as i64, qty: 10 };
+    }
+    for i in 0..asks as usize {
+        d.levels[bids as usize + i] = WireDeltaLevel { price: 2_000 + i as i64, qty: 20 };
+    }
+    d.bid_count = bids;
+    d.ask_count = asks;
+    d
+}
+
+#[test]
+fn delta_fills_the_payload_area_exactly() {
+    // Sized to land on WIRE_PAYLOAD_LEN rather than to push it up: 32 levels
+    // at 16 bytes is 512, and the ids and counts are the remaining 32.
+    assert_eq!(
+        size_of::<WireDeltaLevel>() * WIRE_MAX_DELTA_LEVELS + 32,
+        WIRE_PAYLOAD_LEN
+    );
+    assert_eq!(size_of::<SnapshotDeltaPayload>(), WIRE_PAYLOAD_LEN);
+}
+
+#[test]
+fn the_two_sides_share_one_array() {
+    // The point of sharing: a lopsided message fits where a split array of 16
+    // and 16 would have refused it.
+    let d = delta(30, 2);
+    assert_eq!(d.bids().len(), 30);
+    assert_eq!(d.asks().len(), 2);
+    assert_eq!(d.level_count(), 32);
+    assert_eq!(d.bids()[0].price, 1_000);
+    assert_eq!(d.asks()[0].price, 2_000, "asks start where the bids stop");
+    assert_eq!(d.asks()[1].price, 2_001);
+}
+
+#[test]
+fn one_sided_delta_reads_as_one_sided() {
+    let d = delta(0, 3);
+    assert!(d.bids().is_empty());
+    assert_eq!(d.asks().len(), 3);
+    assert_eq!(d.asks()[0].price, 2_000);
+}
+
+#[test]
+fn accessors_stay_inside_the_array_when_counts_lie() {
+    // A record off the wire can claim anything; validate() rejects it, but the
+    // accessors must not panic on the way to finding that out.
+    let mut d = delta(2, 2);
+    d.bid_count = 200;
+    d.ask_count = 200;
+    assert_eq!(d.bids().len(), WIRE_MAX_DELTA_LEVELS);
+    assert!(d.asks().is_empty(), "no room left after the bids took it all");
+}
+
+#[test]
+fn zero_quantity_is_a_deletion_and_survives_the_round_trip() {
+    // The venue's own encoding for "this price is gone". It must not be
+    // mistaken for an unused array entry, which is why the count is authority.
+    let mut d = delta(1, 0);
+    d.levels[0].qty = 0;
+    assert_eq!(d.bids().len(), 1);
+    assert_eq!(d.bids()[0], WireDeltaLevel { price: 1_000, qty: 0 });
+}
+
+#[test]
+fn prev_final_update_id_is_absent_until_a_venue_sends_one() {
+    let mut d = delta(1, 1);
+    assert_eq!(d.prev_final_update_id(), None, "Binance spot sends no `pu`");
+
+    // Zero must read as a real id once set — that is why the flag exists.
+    d.with_prev_final_update_id(0);
+    assert_eq!(d.prev_final_update_id(), Some(0));
+    assert!(d.delta_flags & delta_flags::PREV_FINAL_VALID != 0);
 }

@@ -53,7 +53,7 @@ impl BondQuote {
         let mut quote = QuotePayload::default();
         let shape = bond::fill_book(payload, bond::HEADER_LEN, &mut quote)?;
 
-        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, KRX.bond_price.scale().unwrap_or_default());
         h.set_depth(shape.depth).set_flags(shape.flags);
 

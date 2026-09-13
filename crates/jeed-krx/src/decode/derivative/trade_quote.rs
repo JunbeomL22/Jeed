@@ -95,7 +95,7 @@ impl DerivativeTradeQuote {
         let shape = fill_book(payload, TRADE_BLOCK_END, self.depth, price, &mut quote)?;
         let trade = fill_trade(payload, price)?;
 
-        let mut h = RecordHeader::new(WireKind::TradeQuote, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::TradeQuote, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, price_scale);
         h.set_depth(shape.depth).set_flags(shape.flags);
 

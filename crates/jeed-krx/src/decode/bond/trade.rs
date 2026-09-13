@@ -57,7 +57,7 @@ impl BondTrade {
         let msg = bond::header(payload)?;
         let trade = bond::fill_trade(payload)?;
 
-        let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, KRX.bond_price.scale().unwrap_or_default());
 
         *out = WireRecord::new_trade(h, trade);

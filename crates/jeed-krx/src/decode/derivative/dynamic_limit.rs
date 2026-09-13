@@ -99,7 +99,7 @@ impl DerivativeDynamicLimit {
             _pad: [0; 6],
         };
 
-        let mut h = RecordHeader::new(WireKind::DynamicPriceLimit, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::DynamicPriceLimit, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, price.scale().unwrap_or_default());
 
         *out = WireRecord::new_dynamic_price_limit(h, out_payload);

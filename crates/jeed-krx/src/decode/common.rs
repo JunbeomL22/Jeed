@@ -20,7 +20,8 @@
 
 use crate::error::KrxError;
 use crate::trcode::TrCode;
-use jeed_wire::{ISIN_LEN, Isin, RecordHeader, Scale, UnixNano};
+use crate::field::{ISIN_LEN, Isin};
+use jeed_wire::{RecordHeader, Scale, UnixNano};
 
 /// Shape A — bytes before the body on 파생·증권 real-time messages.
 pub const HEADER_LEN: usize = 47;
@@ -115,7 +116,7 @@ pub fn fill_record_header(
     recv_ns: UnixNano,
     price_scale: Scale,
 ) {
-    h.isin = msg.isin;
+    h.symbol = crate::field::wire_symbol(&msg.isin);
     h.recv_ns = recv_ns;
     if let Some(tod) = msg.time_of_day_ns {
         h.set_venue_time(crate::clock::absolute_ns(tod, recv_ns));

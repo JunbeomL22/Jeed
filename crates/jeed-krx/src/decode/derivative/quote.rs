@@ -105,7 +105,7 @@ impl DerivativeQuote {
             quote.with_quote_ext(quote_ext::EXPECTED_PRICE, v as u64);
         }
 
-        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, price_scale);
         h.set_depth(shape.depth).set_flags(shape.flags);
 

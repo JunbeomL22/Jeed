@@ -7,7 +7,7 @@ use jeed_wire::{
 };
 
 fn header(kind: WireKind) -> RecordHeader {
-    let mut h = RecordHeader::new(kind, Venue::Krx, *b"KR4A01690002", 1_785_455_100_003_679_000);
+    let mut h = RecordHeader::new(kind, Venue::Krx, jeed_wire::symbol_from_bytes(b"KR4A01690002").unwrap(), 1_785_455_100_003_679_000);
     h.set_scales(Scale::S2, Scale::S0);
     h
 }
@@ -31,11 +31,14 @@ fn layout_is_ten_whole_cache_lines() {
     assert_eq!(align_of::<WireRecord>(), WIRE_ALIGN);
     assert_eq!(WIRE_RECORD_LEN % WIRE_ALIGN, 0);
     assert_eq!(WIRE_RECORD_LEN / WIRE_ALIGN, 10);
-    // 48 + 544 = 592, which is not a whole number of cache lines, so the
-    // record carries 48 bytes of explicit tail. Explicit, because implicit
+    // 64 + 544 = 608, which is not a whole number of cache lines, so the
+    // record carries 32 bytes of explicit tail. Explicit, because implicit
     // padding would be uninitialised bytes going onto the wire.
-    assert_eq!(WIRE_HEADER_LEN + WIRE_PAYLOAD_LEN, 592);
-    assert_eq!(WIRE_RECORD_LEN - 592, 48);
+    //
+    // The header's widening from 48 to 64 (v1 → v2) came out of this tail,
+    // not out of the record: 640 held then and holds now.
+    assert_eq!(WIRE_HEADER_LEN + WIRE_PAYLOAD_LEN, 608);
+    assert_eq!(WIRE_RECORD_LEN - 608, 32);
 }
 
 #[test]
@@ -80,7 +83,7 @@ fn in_place_borrow_requires_alignment() {
     let rec = quote_record();
 
     let aligned = WireRecord::ref_from_bytes(rec.as_bytes()).expect("record is 64-byte aligned");
-    assert_eq!(aligned.header.isin, *b"KR4A01690002");
+    assert_eq!(aligned.header.symbol_bytes(), b"KR4A01690002");
 
     // The first offset into `buf` that lands eight bytes past a 64-byte
     // boundary, whatever the allocator handed us.
@@ -184,4 +187,47 @@ fn debug_names_the_payload_it_actually_carries() {
     let s = format!("{rec:?}");
     assert!(s.contains("quote"), "{s}");
     assert!(!s.contains("heartbeat"), "{s}");
+}
+
+#[test]
+fn snapshot_delta_is_no_longer_a_reserved_kind() {
+    let mut d = jeed_wire::SnapshotDeltaPayload {
+        first_update_id: 157,
+        final_update_id: 160,
+        bid_count: 1,
+        ask_count: 1,
+        ..Default::default()
+    };
+    d.levels[0] = jeed_wire::WireDeltaLevel { price: 2_400, qty: 10 };
+    d.levels[1] = jeed_wire::WireDeltaLevel { price: 2_600, qty: 0 };
+
+    let rec = WireRecord::new_snapshot_delta(header(WireKind::SnapshotDelta), d);
+    assert_eq!(rec.validate(), Ok(()));
+    assert_eq!(rec.snapshot_delta().unwrap().final_update_id, 160);
+    assert_eq!(rec.trade(), Err(WireError::KindMismatch {
+        expected: WireKind::Trade,
+        found: WireKind::SnapshotDelta,
+    }));
+}
+
+#[test]
+fn a_delta_claiming_more_levels_than_it_holds_is_rejected() {
+    // Off-wire defence: the decoder refuses to build one, but a record read
+    // back from a segment written by another build must not be trusted.
+    let d = jeed_wire::SnapshotDeltaPayload { bid_count: 20, ask_count: 20, ..Default::default() };
+    let rec = WireRecord::new_snapshot_delta(header(WireKind::SnapshotDelta), d);
+    assert_eq!(
+        rec.validate(),
+        Err(WireError::DeltaLevelCount { bid: 20, ask: 20, max: 32 })
+    );
+}
+
+#[test]
+fn snapshot_delta_is_the_one_kind_that_does_not_heal_itself() {
+    // Everything else replaces its predecessor, so a ring drop costs an
+    // instant. A dropped delta leaves the book wrong until a resync.
+    assert!(!WireKind::SnapshotDelta.is_self_healing());
+    for k in [WireKind::Quote, WireKind::Trade, WireKind::TradeQuote] {
+        assert!(k.is_self_healing());
+    }
 }

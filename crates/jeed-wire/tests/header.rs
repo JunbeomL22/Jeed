@@ -1,12 +1,14 @@
-//! `jeed_wire::header` — the 48-byte record header.
+//! `jeed_wire::header` — the 64-byte record header.
 
 use jeed_wire::{
-    RecordHeader, Scale, Venue, WIRE_HEADER_LEN, WIRE_MAX_DEPTH, WireError, WireKind, header_flags,
+    RecordHeader, SYMBOL_LEN, Scale, Venue, WIRE_HEADER_LEN, WIRE_MAX_DEPTH, WireError, WireKind,
+    header_flags, symbol_from_bytes,
 };
 
 /// A header that passes validation, for tests that then break one field.
 fn valid() -> RecordHeader {
-    let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, *b"KR4A01690002", 1_000);
+    let mut h =
+        RecordHeader::new(WireKind::Quote, Venue::Krx, symbol_from_bytes(b"KR4A01690002").unwrap(), 1_000);
     h.set_scales(Scale::S2, Scale::S0);
     h
 }
@@ -14,7 +16,7 @@ fn valid() -> RecordHeader {
 #[test]
 fn layout_is_the_documented_one() {
     assert_eq!(size_of::<RecordHeader>(), WIRE_HEADER_LEN);
-    assert_eq!(size_of::<RecordHeader>(), 48);
+    assert_eq!(size_of::<RecordHeader>(), 64);
     assert_eq!(align_of::<RecordHeader>(), 8);
 
     assert_eq!(core::mem::offset_of!(RecordHeader, kind), 0);
@@ -26,7 +28,9 @@ fn layout_is_the_documented_one() {
     assert_eq!(core::mem::offset_of!(RecordHeader, producer_seq), 8);
     assert_eq!(core::mem::offset_of!(RecordHeader, recv_ns), 16);
     assert_eq!(core::mem::offset_of!(RecordHeader, venue_ns), 24);
-    assert_eq!(core::mem::offset_of!(RecordHeader, isin), 32);
+    assert_eq!(core::mem::offset_of!(RecordHeader, symbol), 32);
+    // The symbol runs to 56 and the explicit tail pad closes the header at 64.
+    assert_eq!(core::mem::offset_of!(RecordHeader, _pad1), 32 + SYMBOL_LEN);
 }
 
 #[test]
@@ -40,7 +44,7 @@ fn new_fills_identity_and_reception_time() {
     let h = valid();
     assert_eq!(h.kind(), Ok(WireKind::Quote));
     assert_eq!(h.venue(), Ok(Venue::Krx));
-    assert_eq!(h.isin, *b"KR4A01690002");
+    assert_eq!(h.symbol_bytes(), b"KR4A01690002");
     assert_eq!(h.recv_ns, 1_000);
     assert_eq!(h.validate(), Ok(()));
 }
@@ -59,8 +63,8 @@ fn unknown_enumerated_bytes_are_rejected() {
     assert_eq!(h.validate(), Err(WireError::Kind { found: 200 }));
 
     let mut h = valid();
-    h.venue = 9;
-    assert_eq!(h.validate(), Err(WireError::Venue { found: 9 }));
+    h.venue = 200;
+    assert_eq!(h.validate(), Err(WireError::Venue { found: 200 }));
 
     let mut h = valid();
     h.price_scale = 9;

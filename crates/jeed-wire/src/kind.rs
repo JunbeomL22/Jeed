@@ -27,8 +27,12 @@ pub enum WireKind {
     /// Investor statistics ([`InvestorStatsPayload`](crate::InvestorStatsPayload)).
     InvestorStats = 5,
 
-    /// Incremental book delta. **Reserved** — the payload is defined when a
-    /// delta feed is attached.
+    /// Incremental book update
+    /// ([`SnapshotDeltaPayload`](crate::SnapshotDeltaPayload)).
+    ///
+    /// The only kind that does not replace what came before it, and therefore
+    /// the only one whose loss the consumer must *recover* from rather than
+    /// merely count — see [`is_self_healing`](Self::is_self_healing).
     SnapshotDelta = 6,
 
     /// Applied price-limit expansion ([`PriceLimitPayload`](crate::PriceLimitPayload)).
@@ -144,6 +148,19 @@ pub mod quote_ext {
     /// Only meaningful while an auction is running; the field is zero
     /// otherwise, and a zero is not published.
     pub const EXPECTED_PRICE: u8 = 3;
+}
+
+/// Snapshot-delta flag bits
+/// ([`SnapshotDeltaPayload::delta_flags`](crate::SnapshotDeltaPayload::delta_flags)).
+pub mod delta_flags {
+    /// `prev_final_update_id` is meaningful — the venue names the message
+    /// this one must follow (Binance USD-M `pu`).
+    ///
+    /// A flag rather than a zero because a venue that sends no such field
+    /// (Binance spot) and a venue that sends zero are different situations:
+    /// the first means "chain on `U`/`u` instead", the second would mean
+    /// "follows message zero".
+    pub const PREV_FINAL_VALID: u8 = 1 << 0;
 }
 
 /// Trade payload flag bits ([`TradePayload::trade_flags`](crate::TradePayload::trade_flags)).

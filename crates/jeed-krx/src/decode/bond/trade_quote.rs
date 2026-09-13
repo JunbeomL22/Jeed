@@ -61,7 +61,7 @@ impl BondTradeQuote {
         let shape = bond::fill_book(payload, bond::TRADE_BLOCK_END, &mut quote)?;
         let trade = bond::fill_trade(payload)?;
 
-        let mut h = RecordHeader::new(WireKind::TradeQuote, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::TradeQuote, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, KRX.bond_price.scale().unwrap_or_default());
         h.set_depth(shape.depth).set_flags(shape.flags);
 

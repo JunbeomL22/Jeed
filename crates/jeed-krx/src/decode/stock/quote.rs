@@ -65,7 +65,7 @@ impl StockQuote {
         let shape = securities::fill_book(payload, FIRST_LEVEL, PLAIN, &mut quote)?;
         securities::fill_expected_price(payload, FIRST_LEVEL + DEPTH * PLAIN.stride, &mut quote)?;
 
-        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, KRX.securities_price.scale().unwrap_or_default());
         h.set_depth(shape.depth).set_flags(shape.flags);
 

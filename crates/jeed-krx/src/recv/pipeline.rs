@@ -38,7 +38,7 @@ use crate::recv::filter::{IsinFilter, TrCodeFilter};
 use crate::recv::stats::Stats;
 use crate::trcode::TrCode;
 use jeed_wire::{
-    HeartbeatPayload, ISIN_LEN, RecordHeader, RecordSink, UnixNano, WireKind, WireRecord,
+    HeartbeatPayload, RecordHeader, RecordSink, SYMBOL_LEN, UnixNano, WireKind, WireRecord,
     header_flags,
 };
 
@@ -144,7 +144,7 @@ impl<S: RecordSink> Pipeline<S> {
         // Safe to index: the length now matches the interface, and every
         // interface's 종목코드 sits inside its own fixed header.
         if let Some(at) = dispatch::isin_offset(trcode)
-            && !self.isins.allows(&payload[at..at + ISIN_LEN])
+            && !self.isins.allows(&payload[at..at + crate::field::ISIN_LEN])
         {
             self.stats.filtered_isin += 1;
             return Outcome::FilteredIsin;
@@ -183,7 +183,7 @@ impl<S: RecordSink> Pipeline<S> {
     pub fn heartbeat(&mut self, now: UnixNano) {
         let payload =
             HeartbeatPayload { received: self.stats.received, forwarded: self.stats.published };
-        let header = RecordHeader::new(WireKind::Heartbeat, VENUE, [0; ISIN_LEN], now);
+        let header = RecordHeader::new(WireKind::Heartbeat, VENUE, [0; SYMBOL_LEN], now);
         // Infallible: nothing in the closure can refuse.
         let filled = self.sink.publish(|rec| {
             *rec = WireRecord::new_heartbeat(header, payload);

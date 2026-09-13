@@ -44,7 +44,7 @@ use crate::error::KrxError;
 use crate::field;
 use crate::trcode::TrCode;
 use jeed_wire::{
-    ISIN_LEN, MarketSchedulePayload, RecordHeader, UnixNano, Venue, WireKind, WireRecord,
+    MarketSchedulePayload, RecordHeader, UnixNano, Venue, WireKind, WireRecord,
     expansion_direction, schedule_flags,
 };
 
@@ -106,7 +106,7 @@ impl MarketSchedule {
         let event_group = field::uint(slice(payload, OFF_EVENT_GROUP, 5), OFF_EVENT_GROUP)?;
         let step = field::uint(slice(payload, OFF_STEP, 2), OFF_STEP)?;
 
-        let isin: [u8; ISIN_LEN] = bytes(payload, OFF_ISIN);
+        let isin: crate::field::Isin = bytes(payload, OFF_ISIN);
 
         let mut flags = 0u8;
         if !field::is_blank(&isin) {
@@ -145,7 +145,7 @@ impl MarketSchedule {
             _pad: [0; 7],
         };
 
-        let mut h = RecordHeader::new(WireKind::MarketSchedule, Venue::Krx, isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::MarketSchedule, Venue::Krx, crate::field::wire_symbol(&isin), recv_ns);
         h.recv_ns = recv_ns;
         // 보드이벤트시작시각 is when the event starts, which is not necessarily
         // when this message was sent — it is a schedule, and the start can be in

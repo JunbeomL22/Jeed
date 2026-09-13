@@ -33,7 +33,8 @@ use crate::error::KrxError;
 use crate::field;
 use crate::trcode::TrCode;
 use jeed_convert::Extractor;
-use jeed_wire::{ISIN_LEN, QuotePayload, TradePayload, WIRE_MAX_DEPTH, WireLevel, trade_kind};
+use crate::field::ISIN_LEN;
+use jeed_wire::{QuotePayload, TradePayload, WIRE_MAX_DEPTH, WireLevel, trade_kind};
 
 pub use crate::decode::common::{HEADER_LEN, fill_record_header, header};
 

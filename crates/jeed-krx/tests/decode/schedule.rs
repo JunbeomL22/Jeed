@@ -50,7 +50,7 @@ fn an_instrument_scoped_notice_says_so_and_carries_the_isin() {
     let s = rec.market_schedule().unwrap();
 
     assert!(s.schedule_flags & schedule_flags::INSTRUMENT_SCOPED != 0);
-    assert_eq!(rec.header.isin, *b"KR4101V90009");
+    assert_eq!(rec.header.symbol_bytes(), b"KR4101V90009");
 }
 
 #[test]

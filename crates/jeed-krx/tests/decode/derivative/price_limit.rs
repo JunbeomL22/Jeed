@@ -27,7 +27,7 @@ fn a_widened_daily_band_round_trips() {
 
     assert_eq!(rec.validate(), Ok(()));
     assert_eq!(rec.kind(), Ok(WireKind::PriceLimit));
-    assert_eq!(rec.header.isin, *b"KR4101V90009");
+    assert_eq!(rec.header.symbol_bytes(), b"KR4101V90009");
     assert_eq!(rec.header.price_scale(), Ok(Scale::S2));
 
     let p = rec.price_limit().unwrap();

@@ -33,7 +33,7 @@ fn a_wanted_message_is_decoded_and_published() {
 
     let rec = p.sink().last();
     assert_eq!(rec.kind().unwrap(), WireKind::Quote);
-    assert_eq!(&rec.header.isin, b"KR4101V90009");
+    assert_eq!(rec.header.symbol_bytes(), b"KR4101V90009");
     assert_eq!(rec.header.recv_ns, RECV_NS);
 }
 

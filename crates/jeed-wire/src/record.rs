@@ -7,10 +7,10 @@ use crate::kind::{
 };
 use crate::payload::{
     HeartbeatPayload, InvestorStatsPayload, MarketSchedulePayload, OpenInterestPayload,
-    DynamicPriceLimitPayload, PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload,
-    WirePayload,
+    DynamicPriceLimitPayload, PriceLimitPayload, QuotePayload, SnapshotDeltaPayload, TradePayload,
+    TradeQuotePayload, WirePayload,
 };
-use crate::{WIRE_ALIGN, WIRE_HEADER_LEN, WIRE_PAYLOAD_LEN, WIRE_RECORD_LEN};
+use crate::{WIRE_ALIGN, WIRE_HEADER_LEN, WIRE_MAX_DELTA_LEVELS, WIRE_PAYLOAD_LEN, WIRE_RECORD_LEN};
 use core::fmt;
 
 /// Explicit tail padding so the record is a whole number of cache lines.
@@ -136,6 +136,15 @@ impl WireRecord {
         new_investor_stats
     );
     typed_access!(
+        SnapshotDelta,
+        snapshot_delta,
+        SnapshotDeltaPayload,
+        snapshot_delta,
+        snapshot_delta_mut,
+        set_snapshot_delta,
+        new_snapshot_delta
+    );
+    typed_access!(
         PriceLimit,
         price_limit,
         PriceLimitPayload,
@@ -224,9 +233,20 @@ impl WireRecord {
                     found => Err(WireError::DynLimitAction { found }),
                 }
             }
+            WireKind::SnapshotDelta => {
+                let d = self.snapshot_delta()?;
+                if d.level_count() > WIRE_MAX_DELTA_LEVELS {
+                    Err(WireError::DeltaLevelCount {
+                        bid: d.bid_count,
+                        ask: d.ask_count,
+                        max: WIRE_MAX_DELTA_LEVELS as u8,
+                    })
+                } else {
+                    Ok(())
+                }
+            }
             WireKind::OpenInterest
             | WireKind::InvestorStats
-            | WireKind::SnapshotDelta
             | WireKind::PriceLimit
             | WireKind::Heartbeat => Ok(()),
         }
@@ -332,7 +352,8 @@ impl fmt::Debug for WireRecord {
                 d.field("dynamic_price_limit", &self.dynamic_price_limit().ok())
             }
             Ok(WireKind::MarketSchedule) => d.field("market_schedule", &self.market_schedule().ok()),
-            Ok(WireKind::SnapshotDelta) | Err(_) => d.field("payload", &self.payload),
+            Ok(WireKind::SnapshotDelta) => d.field("snapshot_delta", &self.snapshot_delta().ok()),
+            Err(_) => d.field("payload", &self.payload),
             Ok(WireKind::Heartbeat) => d.field("heartbeat", &self.heartbeat().ok()),
         };
         d.finish()

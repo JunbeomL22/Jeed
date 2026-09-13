@@ -23,7 +23,7 @@ fn a_ktb_book_round_trips_into_a_quote_record() {
 
     assert_eq!(rec.validate(), Ok(()));
     assert_eq!(rec.kind(), Ok(WireKind::Quote));
-    assert_eq!(rec.header.isin, *b"KR103501GA98");
+    assert_eq!(rec.header.symbol_bytes(), b"KR103501GA98");
     assert_eq!(rec.header.depth, 3);
     assert_eq!(rec.header.price_scale(), Ok(Scale::S0));
 

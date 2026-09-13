@@ -57,7 +57,7 @@ impl DerivativeTrade {
         let price = extract::derivative_price(msg.trcode, &msg.isin);
         let trade = fill_trade(payload, price)?;
 
-        let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, msg.isin, recv_ns);
+        let mut h = RecordHeader::new(WireKind::Trade, Venue::Krx, crate::field::wire_symbol(&msg.isin), recv_ns);
         fill_record_header(&mut h, &msg, recv_ns, price.scale().unwrap_or_default());
 
         // No book in this message, so no depth and no emptiness to report. The

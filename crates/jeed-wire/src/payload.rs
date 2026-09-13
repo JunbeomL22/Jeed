@@ -5,9 +5,9 @@
 //! [`WirePayload`] sound regardless of which member was last written — every
 //! bit pattern is a valid value of every member.
 
-use crate::kind::{level_flags, trade_flags, trade_kind};
+use crate::kind::{delta_flags, level_flags, trade_flags, trade_kind};
 use crate::types::{BookPrice, BookQuantity, BookYield, OrderCount};
-use crate::{WIRE_MAX_DEPTH, WIRE_PAYLOAD_LEN};
+use crate::{WIRE_MAX_DELTA_LEVELS, WIRE_MAX_DEPTH, WIRE_PAYLOAD_LEN};
 use core::fmt;
 use core::mem::size_of;
 
@@ -317,6 +317,147 @@ const _: () =
     assert!(size_of::<TradePayload>() + size_of::<QuotePayload>() == size_of::<TradeQuotePayload>());
 
 // ============================================================================
+// Snapshot delta
+// ============================================================================
+
+/// One changed book level (16 bytes).
+///
+/// Narrower than [`WireLevel`] because a delta feed carries neither an order
+/// count nor a per-level extension, and the eight bytes saved are two more
+/// levels per record.
+///
+/// **A zero `qty` is a deletion, not an empty level.** That is the venue's own
+/// encoding (Binance sends `["25.35","0"]` to remove a price), and it is the
+/// only way a delta can say "gone": a level that is merely absent from the
+/// message is a level that did not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+pub struct WireDeltaLevel {
+    /// Price in `price_scale` units.
+    pub price: BookPrice,
+
+    /// New resting quantity at that price in `qty_scale` units. Zero deletes
+    /// the level.
+    pub qty: BookQuantity,
+}
+
+const _: () = assert!(size_of::<WireDeltaLevel>() == 16);
+const _: () =
+    assert!(size_of::<BookPrice>() + size_of::<BookQuantity>() == size_of::<WireDeltaLevel>());
+
+/// Incremental book update (544 bytes).
+///
+/// ## This is the one kind that is not self-healing
+///
+/// Every other payload replaces what came before it, so a ring drop costs a
+/// stale instant and nothing more. A delta *modifies*, so a dropped one leaves
+/// the consumer's book permanently wrong — [`WireKind::is_self_healing`] says
+/// so, and `documents/feed_handler.md` §7 requires the consumer to recover
+/// rather than count.
+///
+/// What makes that recoverable is the update-id chain, which is the venue's
+/// and rides here untouched: a consumer applies a delta only when
+/// `first_update_id` follows the last `final_update_id` it applied, and
+/// resynchronises from a REST snapshot when it does not.
+///
+/// ## Overflow drops the record on purpose
+///
+/// The levels array holds [`WIRE_MAX_DELTA_LEVELS`] changes across both sides.
+/// A venue message with more than that **fails to decode**; nothing is
+/// published, and the consumer meets a hole in the update-id chain and
+/// resynchronises — which is the same machinery it already needs for a ring
+/// drop, and the only correct answer. Publishing a truncated delta would
+/// instead corrupt the book silently and permanently, because a delta the
+/// consumer accepts is a delta it will never be told to re-apply.
+///
+/// [`WireKind::is_self_healing`]: crate::WireKind::is_self_healing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+pub struct SnapshotDeltaPayload {
+    /// Changed levels: `bid_count` bids first, then `ask_count` asks.
+    /// Entries past their sum are zero. Use [`bids`](Self::bids) and
+    /// [`asks`](Self::asks) rather than indexing.
+    pub levels: [WireDeltaLevel; WIRE_MAX_DELTA_LEVELS],
+
+    /// First update id this message covers (Binance `U`).
+    pub first_update_id: u64,
+
+    /// Last update id this message covers (Binance `u`). This is what the
+    /// consumer remembers as "the book is current as of".
+    pub final_update_id: u64,
+
+    /// The `final_update_id` the venue says the previous message carried
+    /// (Binance USD-M `pu`); meaningful with
+    /// [`delta_flags::PREV_FINAL_VALID`].
+    ///
+    /// Carried separately from `first_update_id` because it answers a
+    /// different question: `U` says where this message starts, `pu` says
+    /// which message it must follow. Binance spot has no `pu` and the
+    /// consumer must chain on `U`/`u` instead — hence the flag rather than a
+    /// zero.
+    pub prev_final_update_id: u64,
+
+    /// Number of bid changes at the front of `levels`.
+    pub bid_count: u8,
+
+    /// Number of ask changes following the bids in `levels`.
+    pub ask_count: u8,
+
+    /// [`delta_flags`] bits.
+    pub delta_flags: u8,
+
+    /// Explicit padding — always zero.
+    pub _pad: [u8; 5],
+}
+
+const _: () = assert!(size_of::<SnapshotDeltaPayload>() == 544);
+const _: () = assert!(
+    size_of::<WireDeltaLevel>() * WIRE_MAX_DELTA_LEVELS + 3 * size_of::<u64>() + 3 * size_of::<u8>() + 5
+        == size_of::<SnapshotDeltaPayload>()
+);
+
+impl SnapshotDeltaPayload {
+    /// Bid changes.
+    #[inline]
+    pub fn bids(&self) -> &[WireDeltaLevel] {
+        let n = (self.bid_count as usize).min(WIRE_MAX_DELTA_LEVELS);
+        &self.levels[..n]
+    }
+
+    /// Ask changes.
+    #[inline]
+    pub fn asks(&self) -> &[WireDeltaLevel] {
+        let start = (self.bid_count as usize).min(WIRE_MAX_DELTA_LEVELS);
+        let end = (start + self.ask_count as usize).min(WIRE_MAX_DELTA_LEVELS);
+        &self.levels[start..end]
+    }
+
+    /// Total changes carried.
+    #[inline]
+    pub const fn level_count(&self) -> usize {
+        self.bid_count as usize + self.ask_count as usize
+    }
+
+    /// Sets the venue's previous-message id and marks it valid.
+    #[inline]
+    pub const fn with_prev_final_update_id(&mut self, id: u64) -> &mut Self {
+        self.prev_final_update_id = id;
+        self.delta_flags |= delta_flags::PREV_FINAL_VALID;
+        self
+    }
+
+    /// The venue's previous-message id, if this venue sends one.
+    #[inline]
+    pub const fn prev_final_update_id(&self) -> Option<u64> {
+        if self.delta_flags & delta_flags::PREV_FINAL_VALID != 0 {
+            Some(self.prev_final_update_id)
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
 // Small payloads
 // ============================================================================
 
@@ -580,6 +721,9 @@ pub union WirePayload {
     /// [`WireKind::InvestorStats`](crate::WireKind::InvestorStats).
     pub investor_stats: InvestorStatsPayload,
 
+    /// [`WireKind::SnapshotDelta`](crate::WireKind::SnapshotDelta).
+    pub snapshot_delta: SnapshotDeltaPayload,
+
     /// [`WireKind::PriceLimit`](crate::WireKind::PriceLimit).
     pub price_limit: PriceLimitPayload,
 
@@ -596,6 +740,7 @@ pub union WirePayload {
 const _: () = assert!(size_of::<WirePayload>() == WIRE_PAYLOAD_LEN);
 const _: () = assert!(align_of::<WirePayload>() == 8);
 const _: () = assert!(size_of::<TradeQuotePayload>() == WIRE_PAYLOAD_LEN);
+const _: () = assert!(size_of::<SnapshotDeltaPayload>() == WIRE_PAYLOAD_LEN);
 
 impl WirePayload {
     /// All-zero payload.

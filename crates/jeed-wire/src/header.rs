@@ -1,14 +1,14 @@
-//! Fixed 48-byte record header.
+//! Fixed 64-byte record header.
 
 use crate::error::WireError;
 use crate::kind::{WireKind, header_flags};
-use crate::types::{Isin, Scale, UnixNano, Venue};
+use crate::types::{Scale, Symbol, UnixNano, Venue};
 use crate::{WIRE_HEADER_LEN, WIRE_MAX_DEPTH};
 use core::mem::size_of;
 
 /// Record header — identical for every [`WireKind`].
 ///
-/// Identity is `(venue, isin)` in raw form: the consumer resolves it through
+/// Identity is `(venue, symbol)` in raw form: the consumer resolves it through
 /// its own alias map using `recv_ns` as the resolve time
 /// (`documents/feed_handler.md` §6). Ordering authority is `producer_seq`;
 /// `recv_ns` is for measurement and labelling only.
@@ -55,11 +55,11 @@ pub struct RecordHeader {
     /// `HHMMSSuuuuuu` sources is resolved inside the handler.
     pub venue_ns: UnixNano,
 
-    /// Raw ISIN bytes.
-    pub isin: Isin,
+    /// The venue's own instrument name, `NUL`-padded ([`Symbol`]).
+    pub symbol: Symbol,
 
     /// Explicit padding — always zero.
-    pub _pad1: [u8; 4],
+    pub _pad1: [u8; 8],
 }
 
 const _: () = assert!(size_of::<RecordHeader>() == WIRE_HEADER_LEN);
@@ -70,8 +70,8 @@ const _: () = assert!(
         + size_of::<u16>()
         + size_of::<u64>()
         + 2 * size_of::<UnixNano>()
-        + size_of::<Isin>()
-        + 4
+        + size_of::<Symbol>()
+        + 8
         == size_of::<RecordHeader>()
 );
 
@@ -89,21 +89,27 @@ impl RecordHeader {
         producer_seq: 0,
         recv_ns: 0,
         venue_ns: 0,
-        isin: [0; 12],
-        _pad1: [0; 4],
+        symbol: [0; crate::SYMBOL_LEN],
+        _pad1: [0; 8],
     };
 
     /// Creates a header with the identity and reception time filled in.
     /// Scales default to `S0`; set them with [`set_scales`](Self::set_scales).
     #[inline]
-    pub const fn new(kind: WireKind, venue: Venue, isin: Isin, recv_ns: UnixNano) -> Self {
+    pub const fn new(kind: WireKind, venue: Venue, symbol: Symbol, recv_ns: UnixNano) -> Self {
         Self {
             kind: kind.as_u8(),
             venue: venue.as_u8(),
-            isin,
+            symbol,
             recv_ns,
             ..Self::ZEROED
         }
+    }
+
+    /// The symbol without its `NUL` padding.
+    #[inline]
+    pub fn symbol_bytes(&self) -> &[u8] {
+        crate::types::symbol_bytes(&self.symbol)
     }
 
     /// Decoded record kind.

@@ -2,7 +2,7 @@
 //!
 //! | 층 | 단위 | 비용 | 왜 |
 //! |---|---|---|---|
-//! | IGMP 가입 | 상품군 / 분배그룹 | 0 — the NIC never sees it | [`Endpoint`](super::Endpoint) |
+//! | IGMP 가입 | 상품군 / 분배그룹 | 0 — the NIC never sees it | [`Endpoint`](crate::recv::Endpoint) |
 //! | trcode | 데이터구분 × 상품군 | one binary search over `u64` | [`TrCodeFilter`] |
 //! | ISIN | 종목 | one binary search over 12 bytes | [`IsinFilter`] |
 //!
@@ -23,7 +23,7 @@
 //! maintains.
 
 use crate::trcode::TrCode;
-use jeed_wire::{ISIN_LEN, Isin};
+use crate::field::{ISIN_LEN, Isin};
 
 /// The 데이터구분 codes to keep.
 ///
