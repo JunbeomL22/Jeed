@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{G7, Level, RECV_NS, VENUE_NS, kospi200_book};
+use common::{G7, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
 use jeed_krx::KrxError;
 use jeed_krx::decode::derivative::trade_quote::{FIVE_DEEP, TEN_DEEP, depth_for};
 use jeed_wire::{Scale, WireKind, WireRecord, header_flags, trade_flags, trade_kind};
@@ -134,7 +134,7 @@ fn a_corrupt_field_leaves_the_output_untouched() {
     let mut out = WireRecord::zeroed();
     assert_eq!(
         FIVE_DEEP.decode(&msg, RECV_NS, &mut out),
-        Err(KrxError::Sign { at: 154, found: b'X' })
+        Err(KrxError::Field { at: 154, err: jeed_convert::ParseErr::InvalidDigit })
     );
     assert_eq!(out, WireRecord::zeroed(), "no partial update");
 }
@@ -153,12 +153,18 @@ fn a_message_missing_its_end_keyword_is_refused() {
 
 #[test]
 fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
-    let mut levels = kospi200_book();
-    levels.extend(kospi200_book());
+    // 주식옵션 is the real ten-deep case, and it is point-free: every price in
+    // the message — the print, the band, the session prices, the whole book —
+    // is [sign][8]. Mixing shapes in one message would describe something KRX
+    // never sends.
+    let mut levels = single_stock_book();
+    levels.extend(single_stock_book());
     let mut msg = G7::kospi200(levels);
-    msg.header.trcode = "G705F"; // 주식옵션 — the real ten-deep case
+    msg.header.trcode = "G705F";
     msg.price = "000074100";
     msg.dyn_limits = ("000074800", "000073400");
+    msg.spread_legs = ("000000000", "000000000");
+    msg.session_prices = ("000073900", "000074500", "000073700", "000074050");
 
     let mut out = WireRecord::zeroed();
     TEN_DEEP.decode(&msg.build(), RECV_NS, &mut out).expect("decodes");

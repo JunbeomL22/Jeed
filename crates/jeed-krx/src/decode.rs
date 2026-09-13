@@ -15,4 +15,5 @@
 //! `Vec<WireRecord>` in a test. That is what keeps this crate free of
 //! `jeed-shm`.
 
+pub mod common;
 pub mod derivative;

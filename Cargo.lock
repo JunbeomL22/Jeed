@@ -13,6 +13,7 @@ dependencies = [
 name = "jeed-krx"
 version = "0.1.0"
 dependencies = [
+ "jeed-convert",
  "jeed-wire",
 ]
 

@@ -40,6 +40,19 @@ pub enum WireKind {
     /// Producer liveness ([`HeartbeatPayload`](crate::HeartbeatPayload)).
     /// Emitted from the receive loop itself, never from a side thread (§9).
     Heartbeat = 9,
+
+    /// Intraday dynamic price band applied or released
+    /// ([`DynamicPriceLimitPayload`](crate::DynamicPriceLimitPayload)).
+    ///
+    /// Separate from [`PriceLimit`](Self::PriceLimit) because the two are
+    /// different fences: that one is the daily band that widens in stages,
+    /// this one moves with every print. An order must clear both.
+    ///
+    /// It is also the only way to learn that the band was **released**. A
+    /// release comes with no trade, so a consumer watching only the band
+    /// carried on `Trade`/`TradeQuote` records would keep believing the last
+    /// one it saw.
+    DynamicPriceLimit = 10,
 }
 
 impl WireKind {
@@ -56,6 +69,7 @@ impl WireKind {
             7 => Self::PriceLimit,
             8 => Self::MarketSchedule,
             9 => Self::Heartbeat,
+            10 => Self::DynamicPriceLimit,
             found => return Err(WireError::Kind { found }),
         })
     }
@@ -165,6 +179,24 @@ pub mod trade_kind {
 
     /// Flag present but unclassified.
     pub const UNKNOWN: u8 = 3;
+}
+
+/// 동적가격제한설정코드 encoding
+/// ([`DynamicPriceLimitPayload::action`](crate::DynamicPriceLimitPayload::action)).
+///
+/// The raw KRX byte is not carried: whether a band is in force is a conclusion,
+/// and the consumer should not have to know one venue's codebook to read it
+/// (§8).
+pub mod dyn_limit_action {
+    /// The message said something this build does not recognise. The band in
+    /// the payload must not be acted on.
+    pub const UNKNOWN: u8 = 0;
+
+    /// A band is in force; `upper_price` / `lower_price` are it.
+    pub const APPLIED: u8 = 1;
+
+    /// The band is lifted. Prices in the payload are not a band.
+    pub const RELEASED: u8 = 2;
 }
 
 /// Market schedule flag bits

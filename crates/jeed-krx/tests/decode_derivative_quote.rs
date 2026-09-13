@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{B6, Level, RECV_NS, VENUE_NS, kospi200_book};
+use common::{B6, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
 use jeed_krx::KrxError;
 use jeed_krx::decode::derivative::quote::{FIVE_DEEP, TEN_DEEP, depth_for};
 use jeed_wire::{Scale, Venue, WireKind, WireRecord, header_flags, quote_ext};
@@ -51,22 +51,19 @@ fn the_price_scale_comes_off_the_message_not_a_table() {
 #[test]
 fn a_single_stock_future_has_no_decimal_point_and_says_so() {
     // Same nine bytes, same channel shape, different instrument: [sign][8].
+    // Note the empty levels are EMPTY_PLAIN: an unfilled level is spelled in
+    // its own instrument's shape, so `000000.00` behind a 04F trcode would be a
+    // message KRX never sends.
     let levels = vec![
-        Level {
-            ask_price: "000074100",
-            bid_price: "000074000",
-            ask_qty: 12,
-            bid_qty: 9,
-            ask_count: 2,
-            bid_count: 1,
-        },
-        Level::EMPTY,
-        Level::EMPTY,
-        Level::EMPTY,
-        Level::EMPTY,
+        single_stock_book()[0],
+        Level::EMPTY_PLAIN,
+        Level::EMPTY_PLAIN,
+        Level::EMPTY_PLAIN,
+        Level::EMPTY_PLAIN,
     ];
     let mut msg = B6::kospi200(levels);
     msg.header.trcode = "B604F"; // 주식선물 — five-deep despite the ten-deep book
+    msg.expected_price = "000000000";
     let rec = decode(&msg.build());
 
     assert_eq!(rec.header.price_scale(), Ok(Scale::S0));
@@ -194,22 +191,26 @@ fn a_corrupt_field_leaves_the_output_untouched() {
     let mut out = WireRecord::zeroed();
     assert_eq!(
         FIVE_DEEP.decode(&msg, RECV_NS, &mut out),
-        Err(KrxError::Sign { at: 47, found: b'X' })
+        Err(KrxError::Field { at: 47, err: jeed_convert::ParseErr::InvalidDigit })
     );
     assert_eq!(out, WireRecord::zeroed(), "no partial update");
 }
 
 #[test]
 fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
-    let mut levels = kospi200_book();
-    levels.extend(kospi200_book());
+    // 주식옵션 is the real ten-deep case, and it is also point-free, so the
+    // deeper book is spelled [sign][8] throughout.
+    let mut levels = single_stock_book();
+    levels.extend(single_stock_book());
     let mut msg = B6::kospi200(levels);
-    msg.header.trcode = "B605F"; // 주식옵션 — the real ten-deep case
+    msg.header.trcode = "B605F";
+    msg.expected_price = "000000000";
 
     let mut out = WireRecord::zeroed();
     TEN_DEEP.decode(&msg.build(), RECV_NS, &mut out).expect("decodes");
     assert_eq!(out.header.depth, 10);
-    assert_eq!(out.quote().unwrap().ask[9].price, 93725);
+    assert_eq!(out.header.price_scale(), Ok(Scale::S0));
+    assert_eq!(out.quote().unwrap().ask[9].price, 74300);
 }
 
 #[test]

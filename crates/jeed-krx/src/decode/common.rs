@@ -12,11 +12,11 @@
 //! | B | 41 B | 채권 `B6`/`A3`/`G7` | 정보분배종목인덱스 없음 |
 //! | C | 33 B | 파생 `V1`/`Q2` | 세션ID 없음, 인덱스는 종목코드 뒤 |
 //!
-//! Shape A is the one three markets share, so it lives here as [`header`].
-//! The other two are built by the modules that own them
-//! ([`bond::header`](crate::decode::bond::header),
-//! [`derivative::limit_header`](crate::decode::derivative::limit_header)) out of
-//! the same [`Header`] struct, so everything downstream sees one type.
+//! Shape A is the one three markets share, so it lives here as [`header()`].
+//! The other two are built by the modules that own them — the bond decoders and
+//! [`derivative::limit_header`](crate::decode::derivative::limit_header) — out
+//! of the same [`Header`](struct@Header) struct, so everything downstream sees
+//! one type.
 
 use crate::error::KrxError;
 use crate::trcode::TrCode;
@@ -69,32 +69,17 @@ pub struct Header {
 }
 
 /// Reads a shape-A header (파생·증권). Assumes the frame check has already run.
-pub const fn header(payload: &[u8]) -> Result<Header, KrxError> {
+pub fn header(payload: &[u8]) -> Result<Header, KrxError> {
     if payload.len() < HEADER_LEN {
         return Err(KrxError::TooShort { need: HEADER_LEN, got: payload.len() });
     }
 
-    let trcode = match TrCode::from_message(payload) {
-        Ok(c) => c,
-        Err(e) => return Err(e),
-    };
-    let sequence = match crate::field::uint(slice(payload, OFF_SEQUENCE, 8), OFF_SEQUENCE) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
-    let isin = match crate::field::isin(slice(payload, OFF_ISIN, ISIN_LEN)) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
-    let index = match crate::field::uint(slice(payload, OFF_INDEX, 6), OFF_INDEX) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
+    let trcode = TrCode::from_message(payload)?;
+    let sequence = crate::field::uint(slice(payload, OFF_SEQUENCE, 8), OFF_SEQUENCE)?;
+    let isin = crate::field::isin(slice(payload, OFF_ISIN, ISIN_LEN))?;
+    let index = crate::field::uint(slice(payload, OFF_INDEX, 6), OFF_INDEX)?;
     let time_of_day_ns =
-        match crate::field::time_of_day_ns(slice(payload, OFF_TIME, 12), OFF_TIME) {
-            Ok(v) => v,
-            Err(e) => return Err(e),
-        };
+        crate::field::time_of_day_ns(slice(payload, OFF_TIME, 12), OFF_TIME)?;
 
     Ok(Header {
         trcode,
@@ -136,12 +121,12 @@ pub fn fill_record_header(
 }
 
 /// What filling a book told us about it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Not the price scale: that comes from the reader the decoder chose for the
+/// instrument ([`crate::extract`]), so it is known before the first byte is
+/// read and there is nothing to discover by walking the levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BookShape {
-    /// Price scale read off the message (the decimal point's position varies by
-    /// instrument, not by message — see [`Decimal`](crate::Decimal)).
-    pub price_scale: Scale,
-
     /// Levels actually carrying a resting order, per the deeper side.
     pub depth: u8,
 
@@ -159,28 +144,14 @@ pub struct BookShape {
 /// resting levels reports two.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct BookAccum {
-    decimals: Option<u8>,
     ask_depth: usize,
     bid_depth: usize,
 }
 
 impl BookAccum {
-    /// Records one level's quantities and, the first time a price is spelled at
-    /// all, the scale it was spelled in.
-    ///
-    /// One message is one instrument, so the first price fixes the scale for
-    /// the whole message.
+    /// Records one level's quantities.
     #[inline]
-    pub(crate) fn observe(
-        &mut self,
-        level: usize,
-        price_decimals: Option<u8>,
-        ask_qty: u64,
-        bid_qty: u64,
-    ) {
-        if self.decimals.is_none() {
-            self.decimals = price_decimals;
-        }
+    pub(crate) fn observe(&mut self, level: usize, ask_qty: u64, bid_qty: u64) {
         if ask_qty > 0 {
             self.ask_depth = level + 1;
         }
@@ -190,9 +161,8 @@ impl BookAccum {
     }
 
     /// Turns the accumulated facts into a [`BookShape`].
-    ///
-    /// `at` only reaches an error value.
-    pub(crate) fn finish(self, at: usize) -> Result<BookShape, KrxError> {
+    #[inline]
+    pub(crate) fn finish(self) -> BookShape {
         let mut flags = 0u8;
         if self.ask_depth == 0 {
             flags |= jeed_wire::header_flags::ASK_EMPTY;
@@ -200,12 +170,6 @@ impl BookAccum {
         if self.bid_depth == 0 {
             flags |= jeed_wire::header_flags::BID_EMPTY;
         }
-        let decimals = self.decimals.unwrap_or(0);
-        let price_scale =
-            match Scale::from_decimals(decimals as usize) {
-                Some(s) => s,
-                None => return Err(KrxError::Overflow { at }),
-            };
-        Ok(BookShape { price_scale, depth: self.ask_depth.max(self.bid_depth) as u8, flags })
+        BookShape { depth: self.ask_depth.max(self.bid_depth) as u8, flags }
     }
 }

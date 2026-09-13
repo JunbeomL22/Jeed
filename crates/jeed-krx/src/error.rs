@@ -6,6 +6,7 @@
 
 use crate::trcode::TrCode;
 use core::fmt;
+use jeed_convert::ParseErr;
 use jeed_wire::WireError;
 
 /// A KRX message could not be decoded.
@@ -44,41 +45,19 @@ pub enum KrxError {
         code: TrCode,
     },
 
-    /// A numeric field holds something that is not a digit.
-    Digit {
+    /// A fixed-width numeric field did not parse.
+    ///
+    /// This is where a mis-selected price shape lands. A derivative price is
+    /// nine bytes in three shapes, and each expects the decimal point at a
+    /// different index; reading one as another puts a `'.'` where a digit
+    /// belongs and fails here rather than silently shifting the value by a
+    /// factor of ten (`extract`).
+    Field {
         /// Offset within the message.
         at: usize,
 
-        /// Byte found.
-        found: u8,
-    },
-
-    /// A signed field's sign byte is neither `'0'`, `'+'` nor `'-'`.
-    Sign {
-        /// Offset within the message.
-        at: usize,
-
-        /// Byte found.
-        found: u8,
-    },
-
-    /// A decimal field carries more than one decimal point.
-    DecimalPoint {
-        /// Offset within the message.
-        at: usize,
-    },
-
-    /// A numeric field does not fit the wire's integer width.
-    Overflow {
-        /// Offset within the message.
-        at: usize,
-    },
-
-    /// A time-of-day field is not `HHMMSS` plus a sub-second part of a width
-    /// this decoder knows.
-    TimeWidth {
-        /// Field width found.
-        len: usize,
+        /// What the parser objected to.
+        err: ParseErr,
     },
 
     /// A time-of-day field is syntactically fine but not a real clock reading.
@@ -109,15 +88,7 @@ impl fmt::Display for KrxError {
             }
             Self::EndKeyword { found } => write!(f, "end keyword is {found:#04x}, not 0xff"),
             Self::UnknownTrCode { code } => write!(f, "trcode {code} is not decoded"),
-            Self::Digit { at, found } => {
-                write!(f, "byte {at}: {:?} is not a digit", *found as char)
-            }
-            Self::Sign { at, found } => {
-                write!(f, "byte {at}: {:?} is not a sign", *found as char)
-            }
-            Self::DecimalPoint { at } => write!(f, "byte {at}: second decimal point"),
-            Self::Overflow { at } => write!(f, "byte {at}: number too wide for the wire"),
-            Self::TimeWidth { len } => write!(f, "time field is {len} bytes"),
+            Self::Field { at, err } => write!(f, "byte {at}: {err}"),
             Self::TimeRange { at } => write!(f, "byte {at}: not a clock reading"),
             Self::Wire(e) => write!(f, "{e}"),
         }

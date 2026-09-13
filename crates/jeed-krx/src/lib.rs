@@ -39,6 +39,7 @@ pub mod clock;
 pub mod decode;
 /// Decode errors.
 pub mod error;
+pub mod extract;
 /// Fixed-width ASCII field readers.
 pub mod field;
 /// The frame check that runs before any field is read.
@@ -47,7 +48,6 @@ pub mod message;
 pub mod trcode;
 
 pub use error::KrxError;
-pub use field::Decimal;
 pub use message::{END_KEYWORD, validate, validate_as};
 pub use trcode::{TRCODE_LEN, TrCode};
 

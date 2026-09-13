@@ -724,3 +724,58 @@ hot 소켓으로 들어오므로 §5 결론(hot 링에 같이 싣고 소비자�
 주식선물 호가가 2,690만 건, 그것도 **10단 554B** 짜리다. 링 사이징과 hot 소켓 선택이
 여기서 갈린다 — 주식선물을 안 보면 수신량이 절반 이하로 떨어진다.
 `conf` 의 `trcodes` 가 "진짜 필터" 인 이유가 숫자로 나온 셈이다 (§5 결과 1).
+
+## 15. 파서 계층 — fractal-engine 에서 가져왔다 (2026-09-13)
+
+`Decimal { value, decimals }` 를 들고 다니며 바이트마다 `.` 를 찾던 방식을 버리고
+fractal-engine 의 `utilities::converters` 를 `crates/jeed-convert` 로 포팅했다.
+이유·구조는 그 크레이트 문서와 CLAUDE.md 참조.
+
+### ⚠️ 포팅하면서 발견한 것 — fractal-engine 쪽도 확인이 필요하다
+
+두 가지가 나왔고, **둘 다 fractal-engine 의 KRX 경로에 그대로 있다.** jeed 는 고쳐서
+가져왔지만 저쪽은 손대지 않았다 (범위 밖).
+
+**① `Config` 의 `integer_size` 는 부호 바이트를 포함해야 한다.**
+`is_signed = true` 로 두면 부호 자리가 `total_size` 에는 더해지지만 `clip` 이 읽는 창에는
+안 들어간다. 그래서 9바이트 필드를 `build_extractor(true, 5, 2)` 로 만들면 **앞 8바이트만**
+읽고, 소수점을 인덱스 5 에서 찾는다 — 실제 `.` 는 인덱스 6 이다.
+
+```
+000937.05   (signed, 5, 2) → clip [0..8], '.' 를 5 에서 기대 → InvalidDigit
+000937.05   (signed, 6, 2) → clip [0..9], '.' 를 6 에서 기대 → 93705  ✓
+```
+
+`EXTRACTOR_CONTAINER.derivative.rate_price` 가 `build_extractor(true, 5, 2)` 이고
+`quote.rs` 는 `get_total_size()` 로 잰 9바이트를 넘긴다. 계산대로면 KOSPI200 호가가 전부
+`InvalidDigit` 이어야 하는데 운영 중일 테니, **실제로 어떻게 도는지 확인이 필요하다.**
+
+**② 소수점 있는 리더를 점 없는 필드에 대면 값이 조용히 틀린다.**
+`squeeze_point` 는 설정된 인덱스의 바이트를 보지도 않고 지운다:
+
+```
+000012345  rate(6,2) → 1245   ← '3' 이 지워졌다. 에러 없음
+000012345  plain(9,0) → 12345
+000937.05  plain(9,0) → InvalidDigit   ← 반대 방향은 알아서 깨진다
+```
+
+주식선물·주식옵션·상품파생은 점이 없으므로 이 방향이 실제로 열려 있다. jeed 는
+`FixedExtractor::to_i64_checked` 를 추가해 점 자리를 먼저 확인한다.
+
+### 남은 것
+
+- [ ] `decode/stock/{quote,trade}` — `B6` 0002 (590B), `A3` 0004 (186B)
+- [ ] `decode/etf/{quote,trade}` — `B7` 0003 (830B, LP잔량 → `level_ext::LP_QUANTITY`,
+      LP보유수량 → `quote_ext::LP_HOLDINGS`), 체결은 주식과 같은 0004
+- [ ] `decode/bond/{quote,trade,trade_quote}` — 0023 (462B) / 0027 (223B) / 0029 (643B).
+      헤더 41B(모양 B), 레벨 78B, 수익률 13B → `level_ext::BOND_YIELD`, 잔량 단위 천원
+- [ ] `decode/schedule` — `M4` 0019 (83B). **시장 공통 전문 하나**라 시장별 모듈 아래가 아니다
+- [ ] `decode/dispatch` — **앞 2자리(데이터구분)로 1차 분기**, 그 다음 상품군으로 시장·단수 결정
+- [ ] 소액채권(0024/0030)·REPO(0025/0031) 는 범위 밖으로 둔다
+
+### 수신부 설계 시 전제
+
+- **FIX 를 같이 태울 수 있게 짠다.** 소켓 가입·런타임 dispatch·spin/block·하트비트가 UDP
+  전용으로 굳으면 jeed-fix 가 들어올 자리가 없다. 전송계층을 추상화하고, 링에 싣는 경로는
+  하나로 둔다.
+- 하트비트는 수신 루프 **안에서** 찍는다 (별도 스레드는 위장이다).

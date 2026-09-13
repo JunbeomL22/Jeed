@@ -408,6 +408,66 @@ const _: () = assert!(
         == size_of::<PriceLimitPayload>()
 );
 
+/// Intraday dynamic price band applied or released (40 bytes). Price scale is
+/// the header `price_scale`; the instrument is the header ISIN.
+///
+/// KRX `Q2` / `IFMSRPD0042`. This is the **inner** fence of the order-eligible
+/// range and it moves with every print; the outer one is the daily band carried
+/// by [`PriceLimitPayload`]. See `documents/krx/실시간가격제한.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+pub struct DynamicPriceLimitPayload {
+    /// Exchange processing time, ns since KST midnight.
+    pub applied_time_of_day: u64,
+
+    /// Dynamic upper price. Meaningless unless `action` is
+    /// [`dyn_limit_action::APPLIED`](crate::dyn_limit_action::APPLIED).
+    pub upper_price: BookPrice,
+
+    /// Dynamic lower price. Meaningless unless `action` is
+    /// [`dyn_limit_action::APPLIED`](crate::dyn_limit_action::APPLIED).
+    pub lower_price: BookPrice,
+
+    /// Exchange distribution sequence. **May be zero because the channel left
+    /// it blank** — zero means "not measurable", not "sequence zero"
+    /// (`CLAUDE.md`).
+    pub sequence: u32,
+
+    /// Exchange board, e.g. `G1`.
+    pub board_id: [u8; 2],
+
+    /// Information category, e.g. `01F`.
+    pub information_category: [u8; 3],
+
+    /// [`dyn_limit_action`](crate::dyn_limit_action) encoding.
+    pub action: u8,
+
+    /// Explicit padding — always zero.
+    pub _pad: [u8; 6],
+}
+
+const _: () = assert!(size_of::<DynamicPriceLimitPayload>() == 40);
+const _: () = assert!(
+    size_of::<u64>() + 2 * size_of::<BookPrice>() + size_of::<u32>() + 2 + 3 + 1 + 6
+        == size_of::<DynamicPriceLimitPayload>()
+);
+
+impl DynamicPriceLimitPayload {
+    /// `(upper, lower)` if a band is actually in force.
+    ///
+    /// `None` covers both a release and a code this build does not know, which
+    /// is the same instruction to the consumer: do not fence orders with these
+    /// numbers.
+    #[inline]
+    pub const fn band(&self) -> Option<(BookPrice, BookPrice)> {
+        if self.action == crate::kind::dyn_limit_action::APPLIED {
+            Some((self.upper_price, self.lower_price))
+        } else {
+            None
+        }
+    }
+}
+
 /// Market operation notice (72 bytes). Scope fields are preserved verbatim
 /// so the consumer can decide applicability itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -525,6 +585,9 @@ pub union WirePayload {
 
     /// [`WireKind::MarketSchedule`](crate::WireKind::MarketSchedule).
     pub market_schedule: MarketSchedulePayload,
+
+    /// [`WireKind::DynamicPriceLimit`](crate::WireKind::DynamicPriceLimit).
+    pub dynamic_price_limit: DynamicPriceLimitPayload,
 
     /// [`WireKind::Heartbeat`](crate::WireKind::Heartbeat).
     pub heartbeat: HeartbeatPayload,

@@ -13,15 +13,15 @@
 //! [..+46:47] 0xFF
 //! ```
 
+use crate::decode::common::slice;
 use crate::decode::derivative::{
-    HEADER_LEN, LEVEL_LEN, depth_for_product_group, fill_book, fill_record_header, header, slice,
+    HEADER_LEN, LEVEL_LEN, depth_for_product_group, fill_book, fill_record_header, header,
 };
 use crate::error::KrxError;
+use crate::extract;
 use crate::field;
 use crate::trcode::TrCode;
-use jeed_wire::{
-    QuotePayload, RecordHeader, UnixNano, Venue, WireKind, WireRecord, quote_ext,
-};
+use jeed_wire::{QuotePayload, RecordHeader, UnixNano, Venue, WireKind, WireRecord, quote_ext};
 
 /// Offset of 예상체결가 relative to the end of the level blocks.
 const TAIL_EXPECTED_PRICE: usize = 28;
@@ -80,8 +80,13 @@ impl DerivativeQuote {
         crate::message::validate(payload, self.message_len)?;
         let msg = header(payload)?;
 
+        // One instrument per message, so the price shape is settled once here
+        // and every price in the message is read with it.
+        let price = extract::derivative_price(msg.trcode, &msg.isin);
+        let price_scale = price.scale().unwrap_or_default();
+
         let mut quote = QuotePayload::default();
-        let shape = fill_book(payload, HEADER_LEN, self.depth, &mut quote)?;
+        let shape = fill_book(payload, HEADER_LEN, self.depth, price, &mut quote)?;
 
         // 예상체결가 — the indicative price during a call auction, before the
         // cross. It is the one tail field with somewhere to go: `quote_ext` is
@@ -89,18 +94,19 @@ impl DerivativeQuote {
         // aggregate fields around it (총잔량 ×2, 유효건수 ×2) have no slot at
         // all; see todo.md §10.
         let tail = HEADER_LEN + self.depth * LEVEL_LEN;
-        let expected = field::decimal(
+        let expected = field::price(
+            price,
             slice(payload, tail + TAIL_EXPECTED_PRICE, 9),
             tail + TAIL_EXPECTED_PRICE,
         )?;
-        if let Some(d) = expected
-            && d.value != 0
+        if let Some(v) = expected
+            && v != 0
         {
-            quote.with_quote_ext(quote_ext::EXPECTED_PRICE, d.value as u64);
+            quote.with_quote_ext(quote_ext::EXPECTED_PRICE, v as u64);
         }
 
         let mut h = RecordHeader::new(WireKind::Quote, Venue::Krx, msg.isin, recv_ns);
-        fill_record_header(&mut h, &msg, recv_ns, shape.price_scale);
+        fill_record_header(&mut h, &msg, recv_ns, price_scale);
         h.set_depth(shape.depth).set_flags(shape.flags);
 
         *out = WireRecord::new_quote(h, quote);

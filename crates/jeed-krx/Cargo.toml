@@ -12,3 +12,11 @@ description = "KRX UDP multicast reception and message decoding into jeed-wire r
 # so they run against a `Vec<WireRecord>` in tests and a ring slot in the binary.
 # A decoder bug must not be able to reach the segment.
 jeed-wire = { path = "../jeed-wire" }
+
+# Fixed-width ASCII parsing. Ported from fractal-engine rather than depended on
+# — see jeed-convert's crate docs.
+jeed-convert = { path = "../jeed-convert" }
+
+[dev-dependencies]
+# Tests name the parser errors the readers return.
+jeed-convert = { path = "../jeed-convert" }

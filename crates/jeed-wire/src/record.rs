@@ -2,10 +2,13 @@
 
 use crate::error::WireError;
 use crate::header::RecordHeader;
-use crate::kind::{WireKind, expansion_direction, level_ext, quote_ext, trade_kind};
+use crate::kind::{
+    WireKind, dyn_limit_action, expansion_direction, level_ext, quote_ext, trade_kind,
+};
 use crate::payload::{
     HeartbeatPayload, InvestorStatsPayload, MarketSchedulePayload, OpenInterestPayload,
-    PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload, WirePayload,
+    DynamicPriceLimitPayload, PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload,
+    WirePayload,
 };
 use crate::{WIRE_ALIGN, WIRE_HEADER_LEN, WIRE_PAYLOAD_LEN, WIRE_RECORD_LEN};
 use core::fmt;
@@ -151,6 +154,15 @@ impl WireRecord {
         new_market_schedule
     );
     typed_access!(
+        DynamicPriceLimit,
+        dynamic_price_limit,
+        DynamicPriceLimitPayload,
+        dynamic_price_limit,
+        dynamic_price_limit_mut,
+        set_dynamic_price_limit,
+        new_dynamic_price_limit
+    );
+    typed_access!(
         Heartbeat,
         heartbeat,
         HeartbeatPayload,
@@ -201,6 +213,15 @@ impl WireRecord {
                     | expansion_direction::UP
                     | expansion_direction::DOWN => Ok(()),
                     found => Err(WireError::ExpansionDirection { found }),
+                }
+            }
+            WireKind::DynamicPriceLimit => {
+                let d = self.dynamic_price_limit()?;
+                match d.action {
+                    dyn_limit_action::UNKNOWN
+                    | dyn_limit_action::APPLIED
+                    | dyn_limit_action::RELEASED => Ok(()),
+                    found => Err(WireError::DynLimitAction { found }),
                 }
             }
             WireKind::OpenInterest
@@ -307,6 +328,9 @@ impl fmt::Debug for WireRecord {
             Ok(WireKind::OpenInterest) => d.field("open_interest", &self.open_interest().ok()),
             Ok(WireKind::InvestorStats) => d.field("investor_stats", &self.investor_stats().ok()),
             Ok(WireKind::PriceLimit) => d.field("price_limit", &self.price_limit().ok()),
+            Ok(WireKind::DynamicPriceLimit) => {
+                d.field("dynamic_price_limit", &self.dynamic_price_limit().ok())
+            }
             Ok(WireKind::MarketSchedule) => d.field("market_schedule", &self.market_schedule().ok()),
             Ok(WireKind::SnapshotDelta) | Err(_) => d.field("payload", &self.payload),
             Ok(WireKind::Heartbeat) => d.field("heartbeat", &self.heartbeat().ok()),

@@ -30,9 +30,10 @@ pub mod trade_quote;
 
 use crate::decode::common::{BookAccum, BookShape, Header, slice};
 use crate::error::KrxError;
-use crate::field::{self, Decimal};
+use crate::field;
 use crate::trcode::TrCode;
-use jeed_wire::{ISIN_LEN, QuotePayload, Scale, TradePayload, WIRE_MAX_DEPTH, WireLevel, trade_kind};
+use jeed_convert::Extractor;
+use jeed_wire::{ISIN_LEN, QuotePayload, TradePayload, WIRE_MAX_DEPTH, WireLevel, trade_kind};
 
 pub use crate::decode::common::{HEADER_LEN, fill_record_header, header};
 
@@ -86,7 +87,7 @@ pub const fn depth_for_product_group(trcode: TrCode) -> usize {
 /// `time_at` / `time_len` locate the message's own clock field, which the two
 /// do not agree on: `V1` spells 가격확대시각 in nine bytes (milliseconds), `Q2`
 /// spells 매매처리시각 in twelve (microseconds).
-pub const fn limit_header(
+pub fn limit_header(
     payload: &[u8],
     time_at: usize,
     time_len: usize,
@@ -95,32 +96,17 @@ pub const fn limit_header(
         return Err(KrxError::TooShort { need: time_at + time_len, got: payload.len() });
     }
 
-    let trcode = match TrCode::from_message(payload) {
-        Ok(c) => c,
-        Err(e) => return Err(e),
-    };
-    let sequence = match field::uint(slice(payload, LIM_SEQUENCE, 8), LIM_SEQUENCE) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
-    let isin = match field::isin(slice(payload, LIM_ISIN, ISIN_LEN)) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
-    let index = match field::uint(slice(payload, LIM_INDEX, 6), LIM_INDEX) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
-    let time_of_day_ns = match field::time_of_day_ns(slice(payload, time_at, time_len), time_at) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
+    let trcode = TrCode::from_message(payload)?;
+    let sequence = field::uint(slice(payload, LIM_SEQUENCE, 8), LIM_SEQUENCE)?;
+    let isin = field::isin(slice(payload, LIM_ISIN, ISIN_LEN))?;
+    let index = field::uint(slice(payload, LIM_INDEX, 6), LIM_INDEX)?;
+    let time_of_day_ns = field::time_of_day_ns(slice(payload, time_at, time_len), time_at)?;
 
     Ok(Header {
         trcode,
         sequence,
         board: [payload[LIM_BOARD], payload[LIM_BOARD + 1]],
-        session: [b' ', b' '],
+        session: *b"  ",
         isin,
         index,
         time_of_day_ns,
@@ -129,10 +115,15 @@ pub const fn limit_header(
 
 /// Fills `depth` book levels starting at `first_level`, and reports what the
 /// book turned out to be.
+///
+/// `price` is the reader [`crate::extract::derivative_price`] chose for this
+/// instrument; every price in one message is that instrument's, so it is
+/// selected once and applied to all of them.
 pub fn fill_book(
     payload: &[u8],
     first_level: usize,
     depth: usize,
+    price: &Extractor,
     out: &mut QuotePayload,
 ) -> Result<BookShape, KrxError> {
     debug_assert!(depth <= WIRE_MAX_DEPTH);
@@ -142,8 +133,10 @@ pub fn fill_book(
     for level in 0..depth {
         let at = first_level + level * LEVEL_LEN;
 
-        let ask_price = field::decimal(slice(payload, at + LVL_ASK_PRICE, 9), at + LVL_ASK_PRICE)?;
-        let bid_price = field::decimal(slice(payload, at + LVL_BID_PRICE, 9), at + LVL_BID_PRICE)?;
+        let ask_price =
+            field::price(price, slice(payload, at + LVL_ASK_PRICE, 9), at + LVL_ASK_PRICE)?;
+        let bid_price =
+            field::price(price, slice(payload, at + LVL_BID_PRICE, 9), at + LVL_BID_PRICE)?;
         let ask_qty = field::uint(slice(payload, at + LVL_ASK_QTY, 9), at + LVL_ASK_QTY)?;
         let bid_qty = field::uint(slice(payload, at + LVL_BID_QTY, 9), at + LVL_BID_QTY)?;
         let ask_count = field::uint(slice(payload, at + LVL_ASK_COUNT, 5), at + LVL_ASK_COUNT)?;
@@ -151,12 +144,12 @@ pub fn fill_book(
 
         let ask_qty = ask_qty.unwrap_or(0);
         let bid_qty = bid_qty.unwrap_or(0);
-        accum.observe(level, ask_price.or(bid_price).map(|d: Decimal| d.decimals), ask_qty, bid_qty);
+        accum.observe(level, ask_qty, bid_qty);
 
         out.set_ask(
             level,
             WireLevel::with_count(
-                ask_price.map_or(0, |d| d.value),
+                ask_price.unwrap_or(0),
                 ask_qty,
                 ask_count.unwrap_or(0) as u32,
             ),
@@ -164,7 +157,7 @@ pub fn fill_book(
         out.set_bid(
             level,
             WireLevel::with_count(
-                bid_price.map_or(0, |d| d.value),
+                bid_price.unwrap_or(0),
                 bid_qty,
                 bid_count.unwrap_or(0) as u32,
             ),
@@ -175,7 +168,7 @@ pub fn fill_book(
     // is why this is a payload-level fact and not a per-level one.
     out.with_order_counts();
 
-    accum.finish(first_level)
+    Ok(accum.finish())
 }
 
 // Offsets of the trade block, from documents/krx/layouts.md. `A3`
@@ -196,14 +189,14 @@ pub const TRADE_BLOCK_END: usize = 172;
 ///
 /// Shared by `A3` and `G7` because the two spell it byte for byte alike: the
 /// print, the running totals, the aggressor code and the dynamic band.
-pub fn fill_trade(payload: &[u8]) -> Result<TradePayload, KrxError> {
-    let price = field::decimal(slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
+pub fn fill_trade(payload: &[u8], price_reader: &Extractor) -> Result<TradePayload, KrxError> {
+    let price = field::price(price_reader, slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
     let qty = field::uint(slice(payload, OFF_QTY, 9), OFF_QTY)?;
     let cumulative = field::uint(slice(payload, OFF_CUMULATIVE_QTY, 12), OFF_CUMULATIVE_QTY)?;
-    let dyn_upper = field::decimal(slice(payload, OFF_DYN_UPPER, 9), OFF_DYN_UPPER)?;
-    let dyn_lower = field::decimal(slice(payload, OFF_DYN_LOWER, 9), OFF_DYN_LOWER)?;
+    let dyn_upper = field::price(price_reader, slice(payload, OFF_DYN_UPPER, 9), OFF_DYN_UPPER)?;
+    let dyn_lower = field::price(price_reader, slice(payload, OFF_DYN_LOWER, 9), OFF_DYN_LOWER)?;
 
-    let mut trade = TradePayload::new(price.map_or(0, |d| d.value), qty.unwrap_or(0));
+    let mut trade = TradePayload::new(price.unwrap_or(0), qty.unwrap_or(0));
 
     if let Some(c) = cumulative {
         trade.with_cumulative_qty(c);
@@ -224,23 +217,11 @@ pub fn fill_trade(payload: &[u8]) -> Result<TradePayload, KrxError> {
     // A real band always has both sides above zero, so that is the test — and
     // the answer rides in a flag so the consumer never has to make it again.
     if let (Some(u), Some(l)) = (dyn_upper, dyn_lower)
-        && u.value > 0
-        && l.value > 0
+        && u > 0
+        && l > 0
     {
-        trade.with_dyn_limits(u.value, l.value);
+        trade.with_dyn_limits(u, l);
     }
 
     Ok(trade)
-}
-
-/// Price scale of a trade block read on its own, where there is no book to
-/// read it from.
-///
-/// The scale is a property of the instrument, not the message, so any price
-/// field spells it; 체결가격 is the one always present.
-#[inline]
-pub fn trade_price_scale(payload: &[u8]) -> Result<Scale, KrxError> {
-    let price = field::decimal(slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
-    let decimals = price.map_or(0, |d| d.decimals);
-    Scale::from_decimals(decimals as usize).ok_or(KrxError::Overflow { at: OFF_PRICE })
 }

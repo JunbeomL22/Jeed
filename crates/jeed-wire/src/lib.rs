@@ -44,12 +44,12 @@ pub mod types;
 pub use error::WireError;
 pub use header::RecordHeader;
 pub use kind::{
-    WireKind, expansion_direction, header_flags, level_ext, level_flags, quote_ext, schedule_flags,
+    WireKind, dyn_limit_action, expansion_direction, header_flags, level_ext, level_flags, quote_ext, schedule_flags,
     trade_flags, trade_kind,
 };
 pub use payload::{
     HeartbeatPayload, InvestorStatsPayload, MarketSchedulePayload, OpenInterestPayload,
-    PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload, WireLevel, WirePayload,
+    DynamicPriceLimitPayload, PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload, WireLevel, WirePayload,
 };
 pub use record::WireRecord;
 pub use segment::{SEGMENT_HEADER_LEN, SEGMENT_MAGIC, SegmentHeader};

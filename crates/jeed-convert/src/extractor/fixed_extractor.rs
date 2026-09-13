@@ -50,6 +50,36 @@ impl FixedExtractor {
         Ok(&data[self.config.numeric_start_idx..self.config.numeric_end_idx])
     }
 
+    /// Index **within the field** where this reader expects the decimal point,
+    /// or `None` for an integer field.
+    #[inline]
+    #[must_use]
+    pub fn point_index(&self) -> Option<usize> {
+        self.config.numeric_point_idx.map(|i| i + self.config.numeric_start_idx)
+    }
+
+    /// [`to_i64`](Self::to_i64) with the decimal point's presence verified
+    /// first.
+    ///
+    /// **This is the method to use when the reader was selected rather than
+    /// given.** `squeeze_point` deletes the byte at the configured index
+    /// without looking at it, so a reader configured for `[sign][5].[2]`
+    /// applied to a point-free `000012345` deletes the `'3'` and returns
+    /// `1245` — a wrong number, quietly. Every other mismatch fails on its own
+    /// (a `'.'` where the reader expects a digit is not a digit); this is the
+    /// one direction that does not, so it is checked.
+    #[inline]
+    pub fn to_i64_checked(&self, data: &[u8]) -> Result<i64, ParseErr> {
+        if let Some(idx) = self.point_index() {
+            match data.get(idx) {
+                Some(b'.') => {}
+                Some(_) => return Err(ParseErr::InvalidPointLocation),
+                None => return Err(ParseErr::InvalidLength),
+            }
+        }
+        self.to_i64(data)
+    }
+
     /// Parses a `u8` from the data slice.
     #[inline]
     pub fn to_u8(&self, data: &[u8]) -> Result<u8, ParseErr> {

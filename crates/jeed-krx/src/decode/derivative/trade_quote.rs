@@ -33,25 +33,15 @@
 //! > parses without complaint and yields an upper limit **below** the lower
 //! > one. That is the whole reason `documents/krx/layouts.md` is generated.
 
-use crate::decode::derivative::{LEVEL_LEN, fill_book, fill_record_header, header, slice};
+use crate::decode::derivative::{
+    LEVEL_LEN, TRADE_BLOCK_END, fill_book, fill_record_header, fill_trade, header,
+};
 use crate::error::KrxError;
-use crate::field;
+use crate::extract;
 use crate::trcode::TrCode;
 use jeed_wire::{
-    QuotePayload, RecordHeader, TradePayload, TradeQuotePayload, UnixNano, Venue, WireKind,
-    WireRecord, trade_kind,
+    QuotePayload, RecordHeader, TradeQuotePayload, UnixNano, Venue, WireKind, WireRecord,
 };
-
-// Offsets of the trade block, from documents/krx/layouts.md.
-const OFF_PRICE: usize = 47;
-const OFF_QTY: usize = 56;
-const OFF_CUMULATIVE_QTY: usize = 119;
-const OFF_AGGRESSOR: usize = 153;
-const OFF_DYN_UPPER: usize = 154;
-const OFF_DYN_LOWER: usize = 163;
-
-/// Bytes before the first book level — header plus the trade block.
-pub const TRADE_BLOCK_END: usize = 172;
 
 /// Bytes after the last level block.
 const TAIL_LEN: usize = 29;
@@ -98,46 +88,15 @@ impl DerivativeTradeQuote {
         crate::message::validate(payload, self.message_len)?;
         let msg = header(payload)?;
 
+        let price = extract::derivative_price(msg.trcode, &msg.isin);
+        let price_scale = price.scale().unwrap_or_default();
+
         let mut quote = QuotePayload::default();
-        let shape = fill_book(payload, TRADE_BLOCK_END, self.depth, &mut quote)?;
-
-        let price = field::decimal(slice(payload, OFF_PRICE, 9), OFF_PRICE)?;
-        let qty = field::uint(slice(payload, OFF_QTY, 9), OFF_QTY)?;
-        let cumulative = field::uint(slice(payload, OFF_CUMULATIVE_QTY, 12), OFF_CUMULATIVE_QTY)?;
-        let dyn_upper = field::decimal(slice(payload, OFF_DYN_UPPER, 9), OFF_DYN_UPPER)?;
-        let dyn_lower = field::decimal(slice(payload, OFF_DYN_LOWER, 9), OFF_DYN_LOWER)?;
-
-        let mut trade =
-            TradePayload::new(price.map_or(0, |d| d.value), qty.unwrap_or(0));
-
-        if let Some(c) = cumulative {
-            trade.with_cumulative_qty(c);
-        }
-
-        // 매도매수구분코드: space 단일가체결 / '0' 해당없음 / '1' 매도 / '2' 매수.
-        // The first two are both "there was no aggressor" — an auction cross
-        // has none by definition — so they collapse to UNKNOWN. That is
-        // distinct from NONE, which means the channel has no such field at all.
-        trade.with_kind(match payload[OFF_AGGRESSOR] {
-            b'1' => trade_kind::SELL,
-            b'2' => trade_kind::BUY,
-            _ => trade_kind::UNKNOWN,
-        });
-
-        // KRX cannot say "not applicable": instruments outside the dynamic
-        // limit regime (far-month futures, spreads) carry `000000.00` rather
-        // than blanks. A real band always has both sides above zero, so that is
-        // the test — and the answer rides in a flag so the consumer never has
-        // to make it again.
-        if let (Some(u), Some(l)) = (dyn_upper, dyn_lower)
-            && u.value > 0
-            && l.value > 0
-        {
-            trade.with_dyn_limits(u.value, l.value);
-        }
+        let shape = fill_book(payload, TRADE_BLOCK_END, self.depth, price, &mut quote)?;
+        let trade = fill_trade(payload, price)?;
 
         let mut h = RecordHeader::new(WireKind::TradeQuote, Venue::Krx, msg.isin, recv_ns);
-        fill_record_header(&mut h, &msg, recv_ns, shape.price_scale);
+        fill_record_header(&mut h, &msg, recv_ns, price_scale);
         h.set_depth(shape.depth).set_flags(shape.flags);
 
         *out = WireRecord::new_trade_quote(h, TradeQuotePayload { trade, quote });

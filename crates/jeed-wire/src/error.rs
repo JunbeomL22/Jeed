@@ -112,6 +112,12 @@ pub enum WireError {
         /// Raw direction byte.
         found: u8,
     },
+
+    /// Dynamic price limit action byte is not one this build knows.
+    DynLimitAction {
+        /// Raw action byte.
+        found: u8,
+    },
 }
 
 impl WireError {
@@ -149,6 +155,9 @@ impl fmt::Display for WireError {
             Self::QuoteExtKind { found } => write!(f, "unknown wire quote extension {found}"),
             Self::ExpansionDirection { found } => {
                 write!(f, "unknown wire expansion direction {found}")
+            }
+            Self::DynLimitAction { found } => {
+                write!(f, "unknown wire dynamic limit action {found}")
             }
         }
     }

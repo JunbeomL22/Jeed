@@ -7,13 +7,24 @@
 //! column is an **end** offset and counting it by hand shifts every field by
 //! one (`CLAUDE.md`).
 //!
+//! The parsing itself is [`jeed_convert`]: fields are loaded a machine word at
+//! a time and folded with bitwise operations rather than walked byte by byte,
+//! and a price's scale is a property of the reader that was chosen
+//! ([`crate::extract`]) rather than something discovered per message and
+//! carried alongside the value.
+//!
 //! ## Blank is a value
 //!
 //! A field of all spaces means **"not measurable"**, which is not the same as
 //! zero. 정보분배일련번호 arrives blank on whole channels, and reading it as 0
 //! makes every message look like a sequence gap. Every reader here therefore
-//! returns `Option`, and a decoder that wants to treat blank as zero has to say
-//! so out loud.
+//! checks for blank first and returns `Option`, and a decoder that wants to
+//! treat blank as zero has to say so out loud.
+//!
+//! Blank is checked rather than inferred from a parse failure. Swallowing the
+//! parser's error would fold "the exchange sent spaces" together with "these
+//! bytes are corrupt", and those call for opposite reactions: the first is
+//! normal, the second must drop the message.
 //!
 //! Note that the converse also happens: some fields carry `000000.00` rather
 //! than blanks when the value does not apply (dynamic price limits on
@@ -22,38 +33,11 @@
 //! wire flag instead of the value.
 
 use crate::error::KrxError;
-use jeed_wire::{ISIN_LEN, Isin, Scale};
+use jeed_convert::{Biscuit, Extractor};
+use jeed_wire::{ISIN_LEN, Isin};
 
 /// Nanoseconds in one day — a time-of-day reading is always below this.
 pub const NS_PER_DAY: u64 = 24 * 60 * 60 * 1_000_000_000;
-
-/// A fixed-width ASCII decimal, exactly as the message spells it.
-///
-/// The number of decimals is read off the message rather than looked up,
-/// because the layout varies by *instrument*, not by message: derivative
-/// real-time prices are nine bytes either way, but KOSPI200 futures spell them
-/// `[sign][5].[2]` while single-stock futures spell them `[sign][8]` with no
-/// point at all — and three-month risk-free-rate futures use `[sign][4].[3]`
-/// while sharing the product group `06F` with instruments that use `[5].[2]`.
-/// Scanning for the point is the only rule that holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Decimal {
-    /// All digits as one integer, sign applied, point ignored.
-    pub value: i64,
-
-    /// Digits after the decimal point.
-    pub decimals: u8,
-}
-
-impl Decimal {
-    /// The [`Scale`] this field is expressed in, for the record header.
-    ///
-    /// `None` past eight places, which no KRX field reaches.
-    #[inline]
-    pub const fn scale(&self) -> Option<Scale> {
-        Scale::from_decimals(self.decimals as usize)
-    }
-}
 
 /// `true` when every byte is a space.
 #[inline]
@@ -68,83 +52,33 @@ pub const fn is_blank(field: &[u8]) -> bool {
     true
 }
 
-/// Reads a signed fixed-width decimal: `[sign][digits and at most one point]`.
+/// Reads a signed fixed-width price with the reader its instrument calls for.
 ///
 /// The sign byte is `'0'` (or `'+'`) for positive and `'-'` for negative; KRX
 /// only ever sends a negative in a spread quote. Equity prices spell an unused
 /// byte after the sign, which is a `'0'` and so reads as a leading digit.
 ///
+/// The returned integer is in the reader's own scale — `93705` for `000937.05`
+/// read as `[부호][5].[2]`. That scale goes on the record header once, not on
+/// every value.
+///
 /// `at` is the field's offset in the message and only reaches error values.
-pub const fn decimal(field: &[u8], at: usize) -> Result<Option<Decimal>, KrxError> {
-    if field.is_empty() {
-        return Err(KrxError::TooShort { need: 1, got: 0 });
-    }
+#[inline]
+pub fn price(reader: &Extractor, field: &[u8], at: usize) -> Result<Option<i64>, KrxError> {
     if is_blank(field) {
         return Ok(None);
     }
-
-    let negative = match field[0] {
-        b'0' | b'+' => false,
-        b'-' => true,
-        found => return Err(KrxError::Sign { at, found }),
-    };
-
-    let mut value: i64 = 0;
-    let mut decimals: i32 = -1; // -1 until a point is seen
-    let mut i = 1;
-    while i < field.len() {
-        let b = field[i];
-        if b.is_ascii_digit() {
-            value = match value.checked_mul(10) {
-                Some(v) => v,
-                None => return Err(KrxError::Overflow { at: at + i }),
-            };
-            value = match value.checked_add((b - b'0') as i64) {
-                Some(v) => v,
-                None => return Err(KrxError::Overflow { at: at + i }),
-            };
-            if decimals >= 0 {
-                decimals += 1;
-            }
-        } else if b == b'.' {
-            if decimals >= 0 {
-                return Err(KrxError::DecimalPoint { at: at + i });
-            }
-            decimals = 0;
-        } else {
-            return Err(KrxError::Digit { at: at + i, found: b });
-        }
-        i += 1;
-    }
-
-    let decimals = if decimals < 0 { 0 } else { decimals as u8 };
-    Ok(Some(Decimal { value: if negative { -value } else { value }, decimals }))
+    reader.to_i64_checked(field).map(Some).map_err(|err| KrxError::Field { at, err })
 }
 
 /// Reads an unsigned fixed-width integer — quantities, counts, sequence
-/// numbers. No sign byte and no decimal point.
-pub const fn uint(field: &[u8], at: usize) -> Result<Option<u64>, KrxError> {
+/// numbers. No sign byte and no decimal point, so no reader is needed.
+#[inline]
+pub fn uint(field: &[u8], at: usize) -> Result<Option<u64>, KrxError> {
     if is_blank(field) {
         return Ok(None);
     }
-    let mut value: u64 = 0;
-    let mut i = 0;
-    while i < field.len() {
-        let b = field[i];
-        if !b.is_ascii_digit() {
-            return Err(KrxError::Digit { at: at + i, found: b });
-        }
-        value = match value.checked_mul(10) {
-            Some(v) => v,
-            None => return Err(KrxError::Overflow { at: at + i }),
-        };
-        value = match value.checked_add((b - b'0') as u64) {
-            Some(v) => v,
-            None => return Err(KrxError::Overflow { at: at + i }),
-        };
-        i += 1;
-    }
-    Ok(Some(value))
+    u64::parse_decimal(field).map(Some).map_err(|err| KrxError::Field { at, err })
 }
 
 /// Reads `HHMMSS` plus a sub-second part as nanoseconds since midnight.
@@ -153,49 +87,43 @@ pub const fn uint(field: &[u8], at: usize) -> Result<Option<u64>, KrxError> {
 /// `HHMMSSmmm` (milliseconds, e.g. 가격확대시각 on `V1`).
 ///
 /// **The result has no date**, so it wraps at midnight. Assembling an absolute
-/// timestamp is the receive loop's job, not the field reader's — and it stays
+/// timestamp is [`crate::clock`]'s job, not the field reader's — and it stays
 /// inside the handler (`documents/feed_handler.md` §6).
-pub const fn time_of_day_ns(field: &[u8], at: usize) -> Result<Option<u64>, KrxError> {
+pub fn time_of_day_ns(field: &[u8], at: usize) -> Result<Option<u64>, KrxError> {
     let sub_digits = match field.len() {
-        12 => 6,
+        12 => 6usize,
         9 => 3,
-        len => return Err(KrxError::TimeWidth { len }),
+        _ => return Err(KrxError::Field { at, err: jeed_convert::ParseErr::InvalidLength }),
     };
     if is_blank(field) {
         return Ok(None);
     }
 
-    let hh = match uint(field.split_at(2).0, at) {
-        Ok(Some(v)) => v,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    let (_, rest) = field.split_at(2);
-    let mm = match uint(rest.split_at(2).0, at + 2) {
-        Ok(Some(v)) => v,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    let (_, rest) = rest.split_at(2);
-    let ss = match uint(rest.split_at(2).0, at + 4) {
-        Ok(Some(v)) => v,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    let (_, sub) = rest.split_at(2);
-    let sub = match uint(sub, at + 6) {
-        Ok(Some(v)) => v,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
-    };
+    let (hhmmss, sub) = field.split_at(6);
 
-    // 24:00:00 is not a clock reading, and neither is 09:61.
-    if hh > 23 || mm > 59 || ss > 59 {
+    // Range-check the digits before folding, not after. The fold multiplies the
+    // minutes field by 60 and the hours field by 3600 whatever they say, so
+    // `096100` comes out of it as a perfectly ordinary second count — the
+    // nonsense is only visible while the digits are still digits. Three
+    // comparisons on the tens places is the whole check: minutes and seconds
+    // cannot start above '5', and hours cannot exceed 23.
+    if hhmmss[0] > b'2'
+        || (hhmmss[0] == b'2' && hhmmss[1] > b'3')
+        || hhmmss[2] > b'5'
+        || hhmmss[4] > b'5'
+    {
         return Err(KrxError::TimeRange { at });
     }
 
+    let seconds = jeed_convert::decimal_core::hhmmss::parse_hhmmss_to_seconds(hhmmss)
+        .map_err(|err| KrxError::Field { at, err })?;
+
+    let sub = match u64::parse_decimal(sub) {
+        Ok(v) => v,
+        Err(err) => return Err(KrxError::Field { at: at + 6, err }),
+    };
     let sub_ns = if sub_digits == 6 { sub * 1_000 } else { sub * 1_000_000 };
-    Ok(Some(((hh * 3600 + mm * 60 + ss) * 1_000_000_000) + sub_ns))
+    Ok(Some(seconds * 1_000_000_000 + sub_ns))
 }
 
 /// Copies a twelve-byte ISIN out of the message.

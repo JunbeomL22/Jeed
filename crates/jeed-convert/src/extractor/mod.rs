@@ -162,6 +162,20 @@ impl Extractor {
         }
     }
 
+    /// [`to_i64`](Self::to_i64) with the decimal point's presence verified
+    /// first — see
+    /// [`FixedExtractor::to_i64_checked`](fixed_extractor::FixedExtractor::to_i64_checked).
+    ///
+    /// A dynamic extractor reads the point out of the text it was given, so
+    /// there is nothing to verify and this is just `to_i64`.
+    #[inline]
+    pub fn to_i64_checked(&self, data: &[u8]) -> Result<i64, ParseErr> {
+        match self {
+            Extractor::Fixed(ext) => ext.to_i64_checked(data),
+            Extractor::Dynamic(ext) => ext.to_i64(data),
+        }
+    }
+
     /// Parses an `f32` from the data slice.
     #[inline]
     pub fn to_f32(&self, data: &[u8]) -> Result<f32, ParseErr> {
