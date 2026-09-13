@@ -18,6 +18,43 @@ jeed-wire = { path = "../jeed-wire" }
 # (`DynamicExtractor`) rather than its fixed-width one.
 jeed-convert = { path = "../jeed-convert" }
 
+# ---------------------------------------------------------------------------
+# The receive loop, and the only external dependency in the workspace.
+#
+# `wss://` is TLS, and TLS is not something to write by hand — so `rustls` is
+# the one crate this workspace takes from outside, and it comes in behind the
+# `recv` feature so a consumer that only wants the decoders (a replay, a test
+# harness, the OMS reading captured frames) links none of it. WebSocket framing
+# itself is written here (`src/recv/ws/`), for the reason `jeed-shm` declares
+# six Win32 entry points rather than pulling `windows-sys`: what we use is
+# small, and the buffer the decoder reads from stays ours.
+#
+# `ring`, not `aws-lc-rs`: the latter needs NASM and CMake on Windows, and a
+# TLS backend that decides which machines can build the handler is the wrong
+# backend. `logging` is off — `log` would be a second external crate for
+# messages nobody reads at 100 kHz.
+# ---------------------------------------------------------------------------
+
+[features]
+default = ["recv"]
+# The WebSocket + TLS receive loop (`jeed_crypto::recv`).
+recv = ["dep:rustls", "dep:webpki-roots"]
+
+[dependencies.rustls]
+version = "0.23"
+default-features = false
+features = ["std", "tls12", "ring"]
+optional = true
+
+[dependencies.webpki-roots]
+version = "1"
+optional = true
+
 [dev-dependencies]
 jeed-wire = { path = "../jeed-wire" }
 jeed-convert = { path = "../jeed-convert" }
+
+[[test]]
+name = "recv"
+path = "tests/recv/main.rs"
+required-features = ["recv"]

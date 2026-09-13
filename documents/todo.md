@@ -68,6 +68,9 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
   쓰고 바이너리가 shm 링에 연결한다. 테스트는 `Vec<WireRecord>` 싱크로 돈다.
 - 바이너리는 `jeed` 한 크레이트에 `[[bin]]` 둘. conf 로딩·코어 핀·세그먼트 생성·하트비트·로깅이
   두 핸들러에서 동일하므로 한 번만 쓴다. 세 번째 피드가 붙어도 배선 코드는 그대로다.
+- **외부 의존은 `rustls`(+`webpki-roots`) 하나다** (2026-09-13). `wss://` 가 TLS 라 피할 수 없고,
+  `jeed-crypto` 의 `recv` 피처(기본 켜짐) 뒤에 있어서 디코더만 쓰는 쪽은 `default-features = false`
+  로 TLS 를 링크하지 않는다. WebSocket 프레이밍은 직접 썼다 — §6 "`jeed-crypto` 수신부".
 
 ## 3. 이관 대상
 
@@ -84,7 +87,7 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
 | `src/data/fix/{frame,tagvalue,market_data,session,error}.rs` | `jeed-fix` | 그대로 |
 | `src/data/exchanges/binance/json.rs` | `jeed-crypto/src/json.rs` | 스캐너는 그대로, 레벨 파서만 고정배열로 |
 | `src/data/exchanges/binance/decode/**` | `jeed-crypto/src/binance/` | 출력 타입 교체 + 디코더당 struct → `Instrument` + 자유함수 |
-| `src/data/receiver/crypto.rs` | 보류 | WS 수신부. tungstenite 를 들일지 별도 결정 |
+| `src/data/receiver/crypto.rs` | `jeed-crypto/src/recv/` | 완료. epoll/thread-per-socket 두 갈래는 안 가져왔다 — 수신 루프 하나가 연결 하나다(§6) |
 | `src/data/exchanges/{upbit,bithumb,okx,bybit}/decode/**` | `jeed-crypto/{upbit,bithumb,okx,bybit}/` | 완료. 시퀀스 추적(`last_seq_id`)은 안 가져왔다 — 핸들러는 무상태 |
 | `src/data/exchanges/{bitget,gate,kucoin}/decode/**` | `jeed-crypto/{bitget,gate,kucoin}/` | 완료. kucoin 은 spot/futures 두 모듈 |
 | `src/data/exchanges/{htx,kraken}/decode/**` | **안 가져옴** | 결정(2026-09-13). htx 는 gzip 프레이밍, kraken 은 객체형 레벨·RFC3339·시퀀스 없음 |
@@ -522,14 +525,54 @@ spin 이냐 block 이냐가 실제 동작이다.
       객체형(`{"price":…,"qty":…}`)에 시각이 RFC3339, 그리고 **시퀀스가 아예 없어** 델타의
       갱신ID 자리를 비워야 한다 — 셋 다 지금 있는 것과 모양이 다르다. 필요해지면 그때
       `Venue` 다음 바이트로 들어온다
-- [ ] **`jeed-crypto` 수신부** — WS + TLS. `tungstenite` 를 워크스페이스에 들일지 먼저 정한다.
-      fractal-engine `receiver/crypto.rs` 는 Linux epoll / Windows thread-per-socket 두 갈래.
-      디코더는 바이트 슬라이스만 보고 수신부는 디코더를 모르므로 거래소가 더 붙어도 하나다.
-      REST 스냅샷을 누가 가져올지도 여기서 정해진다 — `snapshot::decode` 는 이미 있고
-      요청하는 쪽이 없다
+- [x] **`jeed-crypto` 수신부** (2026-09-13, `crates/jeed-crypto/src/recv/`) — TCP · rustls ·
+      WebSocket 핸드셰이크 · 프레임 · 조각 조립 · ping/pong/close · 침묵 감시 · 재접속. 테스트
+      105 건(`tests/recv/`, 루프백 WS 서버 위에서 실제로 돈다) + 라이브 1 건(`live.rs`, `#[ignore]`,
+      바이낸스 `wss://` 에서 체결 3 건 수신으로 TLS 경로 확인). 리눅스(WSL) 동일 통과.
+      **결정: `rustls` 만 들이고 프레이밍은 직접 쓴다.** 두 가지가 그 결정을 만든다:
+  - **서버 프레임은 마스킹이 없다**(RFC 6455 §5.1). 그래서 페이로드가 수신 버퍼에 디코더가
+        원하는 그대로 놓이고, `Frame::payload` 는 그 버퍼의 슬라이스다 — 프레임당 복사도 할당도
+        없다. `tungstenite` 는 `read()` 가 `Message::Text(String)` 을 주므로 프레임마다 힙이다.
+        마스킹 XOR 은 우리가 보내는 쪽(구독·pong)에만 있고 그건 초당 한 번도 안 된다
+  - **TLS 는 손으로 못 쓴다.** `rustls` + `webpki-roots`(모질라 루트, OS 저장소 아님 — Windows 와
+        리눅스가 같은 동작). 백엔드는 `aws-lc-rs` 가 아니라 **`ring`**: 전자는 Windows 빌드에
+        NASM·CMake 가 필요하고, 어느 기계에서 빌드되느냐를 TLS 백엔드가 정하면 안 된다.
+        `logging` 피처도 끈다 — `log` 는 두 번째 외부 크레이트다. `Cargo.lock` 6 → 32 패키지
+  - `Sec-WebSocket-Accept` 를 검증한다(§4.1 이 MUST). 그래서 SHA-1 이 60 줄 들어왔다 —
+        rustls 의 프로바이더는 SHA-256 이상만 내놓고, 해시 크레이트는 콜드 패스 한 호출에
+        의존성 하나다. 표준 벡터로 테스트했다
+  - 확장은 안 내민다. 그래서 `permessage-deflate` 가 협상될 수 없고 RSV 비트가 켜진 프레임은
+        압축이 아니라 프로토콜 오류다. HTX 를 뺀 이유가 코드로 나온 자리
+  - **`Router` 가 베뉴가 붙는 자리다** (`jeed-fix` 의 `MdAdapter` 와 같은 논리). 메시지가 어느
+        스트림 것인지는 거래소마다 다르게 말하고(바이낸스 `stream` 봉투, 바이비트 `topic`, OKX
+        `arg`, 쿠코인 `topic:심볼`) 한 연결이 여러 스트림을 싣는다. `route(msg, recv_ns, sink)`
+        가 `(Instrument, 디코더)` 를 고르고, `keepalive(now, out)` 이 거래소 방언의 ping
+        (`{"op":"ping"}`, `ping`, `{"type":"ping"}`)을 낸다. **거래소별 라우터는 아직 없다** —
+        바이너리와 같이 온다(아래). 테스트는 바이낸스 현물 체결 하나짜리 가짜 라우터로 돈다
+  - **생존은 두 층이다.** RFC 6455 ping 은 모든 서버가 답하므로 `ping_interval_ns` 가 그걸
+        보낸다(한 간격 침묵 → ping, 두 간격 → 끊고 재접속. 어떤 프레임이든 시계를 되돌린다 —
+        데이터가 오면 살아 있는 것이다). 거래소 방언 ping 은 `Router::keepalive`. 바이낸스·
+        업비트는 서버가 먼저 ping 하므로 후자가 필요 없고 기본 구현이 `None` 이다
+  - 조각난 메시지는 **유일한 복사**다(`ws::assemble`, 1 MiB). 한 프레임 메시지는 제자리에서
+        디코드된다. 조각 사이에 끼는 ping 은 그 자리에서 답한다. 조립 버퍼를 넘치면 잘라서
+        디코드하지 않고 끊는다 — 잘린 JSON 은 얕은 북이 아니라 JSON 이 아니다
+  - 수신 버퍼 1 MiB 는 **프레임 하나**의 상한이다(바이비트 1000 단 스냅샷 ≈ 50 KB, OKX 400 단
+        ≈ 20 KB 의 한 자릿수 위). 압축(consume 마다가 아니라 `fill` 마다)은 한 read 에 프레임
+        백 개가 들어왔을 때 꼬리를 백 번 옮기지 않으려는 것 — `jeed-fix` 의 `FrameBuffer` 와
+        다른 점
+  - `unsafe` 없음, `#[cfg]` 없음 — `jeed-fix` 와 같은 이유. `Link` 는 `Plain(TcpStream)` /
+        `Tls(StreamOwned)` 둘 중 하나고 루프는 어느 쪽인지 모른다. 그래서 루프 테스트는 전부
+        평문 루프백이고 TLS 는 라이브 한 건이다
+  - REST 스냅샷은 여전히 아무도 요청하지 않는다. 이 수신부는 WebSocket 만 안다 — HTTP
+        클라이언트를 여기 넣으면 "연결 하나 = 루프 하나" 가 깨진다. 게이트·쿠코인 현물의 시작
+        북은 바이너리(또는 라우터)가 가져와서 `snapshot::decode` 에 준다. **§6 `jeed` 바이너리
+        항목의 일부다**
 - [ ] **`jeed` 바이너리** — conf 로딩, 코어 핀, 세그먼트 생성, 소켓 가입, 기동 검증.
       지금 `crates/jeed/` 는 없다. KRX·FIX·크립토 셋이 각자 수신부를 갖고 있으므로
-      바이너리가 정하는 건 "무엇을 띄우고 어느 코어에 붙이고 어느 세그먼트에 쓰느냐" 뿐이다
+      바이너리가 정하는 건 "무엇을 띄우고 어느 코어에 붙이고 어느 세그먼트에 쓰느냐" 뿐이다.
+      크립토 쪽은 여기서 두 가지가 더 정해진다: **거래소별 `Router` 구현**(스트림 → 디코더,
+      구독 메시지, 방언 ping)과 **REST 시작 북**(게이트·쿠코인 현물)을 누가 언제 가져와
+      `snapshot::decode` 에 주느냐
 - [ ] **pcap 리플레이 검증** — `E:/Data/krx_pcap` 을 넣어 §4 의 대조 + 종료키워드·길이 통계
 
 ## 7. feed_handler.md §15 미구현

@@ -21,13 +21,15 @@
 //! that would justify a second crate — a transport, a session, a socket — is
 //! not here at all.
 //!
-//! ## Where this crate stops
+//! ## Where the decoders stop, and where the loop begins
 //!
-//! At the record. There is no socket, no TLS, no reconnect and no thread:
-//! `jeed-fix` stopped at [`MdMessage`]-equivalent for a while for the same
-//! reason, and the receive loop is a separate piece of work
-//! (`documents/todo.md`). Everything here runs against a byte slice, so the
-//! tests are captured frames and nothing else.
+//! The decoders stop at the record: every one of them runs against a byte
+//! slice, so their tests are captured frames and nothing else. The socket,
+//! TLS, reconnect and thread are [`recv`], behind the `recv` feature (on by
+//! default) — a consumer that only wants the decoders turns it off and links
+//! no TLS. That split is the reason this crate can have a transport at all
+//! without contradicting the paragraph above: the transport is a module the
+//! decoders do not see.
 //!
 //! ## What crypto forces that KRX did not
 //!
@@ -59,12 +61,15 @@ pub mod bitget;
 pub mod bithumb;
 pub mod book;
 pub mod bybit;
+pub mod clock;
 pub mod error;
 pub mod gate;
 pub mod instrument;
 pub mod json;
 pub mod kucoin;
 pub mod okx;
+#[cfg(feature = "recv")]
+pub mod recv;
 pub mod time;
 pub mod upbit;
 

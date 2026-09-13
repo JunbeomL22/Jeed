@@ -25,6 +25,7 @@ crates/
   jeed-fix/    FIX 4.4 프로토콜 → MdMessage → WireRecord
   jeed-crypto/ 크립토 WebSocket JSON → WireRecord
                (binance·upbit·bithumb·okx·bybit·bitget·gate·kucoin)
+               + recv/ WS·TLS 수신부 — 워크스페이스의 유일한 외부 의존(rustls)
   jeed/        바이너리 (krx, fix)
 documents/     설계·표준서·제도 문서
 conf/          채널 테이블(생성) + 배포 설정(수기)
@@ -373,6 +374,38 @@ OKX `books` 는 `action` 이 `snapshot`/`update`, 바이비트 `orderbook` 은 `
 봉투에만 있는 거래소(비트겟, 쿠코인 선물)는 프레임당 한 번 검사한다. 그래서 비트겟
 `trade::trades` 는 OKX 와 달리 `Instrument` 를 받는다 — 검사할 기회가 거기밖에 없다.
 (REST 본문엔 아예 없기도 하다. 있을 때만 본다.)
+
+### 수신부는 `rustls` 만 들이고 WebSocket 프레이밍은 직접 쓴다
+
+`jeed_crypto::recv` 가 워크스페이스의 **유일한 외부 의존**을 갖는다(`rustls` + `webpki-roots`,
+`ring` 백엔드, `logging` 끔). `wss://` 가 TLS 라 피할 수 없다. `recv` 피처(기본 켜짐) 뒤에
+있으므로 디코더만 쓰는 쪽은 `default-features = false`.
+
+RFC 6455 프레이밍을 직접 쓴 이유는 **서버 프레임에 마스킹이 없어서**다. 페이로드가 수신
+버퍼에 디코더가 원하는 그대로 놓이고 `Frame::payload` 는 그 슬라이스다 — 프레임당 복사도
+할당도 없다. `tungstenite` 는 `read()` 가 `String` 을 준다. 마스킹은 우리가 보내는 쪽(구독,
+pong)뿐이고 그건 초당 한 번도 안 된다.
+
+- **확장은 안 내민다.** 그래서 `permessage-deflate` 가 협상될 수 없고, RSV 비트가 켜진 프레임은
+  압축이 아니라 프로토콜 오류다. HTX(전 프레임 gzip)를 뺀 이유가 여기 코드로 있다
+- **`Sec-WebSocket-Accept` 를 검증한다.** 그래서 SHA-1 이 60 줄 들어와 있다(`recv/ws/sha1.rs`).
+  rustls 프로바이더는 SHA-1 을 안 내놓고, 해시 크레이트는 콜드 패스 한 호출에 의존성 하나다
+- **조각난 메시지만 복사한다**(`ws::assemble`). 넘치면 잘라서 디코드하지 않고 끊는다 — 잘린
+  JSON 은 얕은 북이 아니라 JSON 이 아니다
+
+### `Router` 가 베뉴가 붙는 자리다
+
+수신 루프는 어느 거래소인지 모른다. 메시지가 어느 스트림 것인지(바이낸스 `stream` 봉투,
+바이비트 `topic`, OKX `arg`, 쿠코인 `topic:심볼`)와 거래소 방언 ping(`{"op":"ping"}`, `ping`,
+`{"type":"ping"}`)이 거래소마다 다르고, 그 둘이 `Router::route` / `Router::keepalive` 다 —
+`jeed-fix` 의 `MdAdapter` 와 같은 논리. **거래소별 라우터는 아직 없다**(바이너리와 같이 온다).
+
+생존은 두 층이다: RFC 6455 ping 은 모든 서버가 답하므로 루프가 보낸다(한 간격 침묵 → ping, 두
+간격 → 끊는다. **어떤 프레임이든** 시계를 되돌린다 — 데이터가 오면 살아 있는 것이다). 방언
+ping 은 라우터가 낸다. 바이낸스·업비트는 서버가 먼저 ping 하므로 후자가 필요 없다.
+
+REST 시작 북(게이트·쿠코인 현물)은 여전히 아무도 요청하지 않는다. 수신부는 WebSocket 만 안다 —
+HTTP 클라이언트를 넣으면 "연결 하나 = 루프 하나" 가 깨진다. 바이너리 몫이다.
 
 ## Coding Guidelines
 
