@@ -78,3 +78,19 @@ fn symbol_matching_is_byte_for_byte() {
     assert!(!inst.matches(b"BTCUSDTT"), "a prefix is not a match");
     assert_eq!(inst.check_symbol(b"ETHUSDT"), Err(CryptoError::SymbolMismatch));
 }
+
+#[test]
+fn exponent_form_reads_as_the_same_number() {
+    // Upbit sends KRW prices above ten million as `1.04525E8`.
+    let inst = Instrument::new(Venue::Upbit, b"KRW-BTC", 0, 8).unwrap();
+    assert_eq!(inst.price(b"1.04525E8", "trade_price").unwrap(), 104_525_000);
+    assert_eq!(inst.price(b"104525000.0", "trade_price").unwrap(), 104_525_000);
+    assert_eq!(inst.qty(b"8.428E-4", "trade_volume").unwrap(), 84_280);
+    assert_eq!(inst.qty(b"0.00084280", "trade_volume").unwrap(), 84_280);
+
+    // The scale still guards what the exponent unfolds to.
+    let e = inst.price(b"1.045251E2", "trade_price").unwrap_err();
+    assert_eq!(e, CryptoError::Field { key: "trade_price", err: ParseErr::Precision });
+    let e = inst.price(b"1.5E", "trade_price").unwrap_err();
+    assert_eq!(e, CryptoError::Field { key: "trade_price", err: ParseErr::InvalidDigit });
+}

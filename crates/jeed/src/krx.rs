@@ -30,6 +30,7 @@
 
 use crate::conf::{FeedConf, KrxConf};
 use crate::cpu::{self, CpuError};
+use crate::feed::Death;
 use crate::{info, warn};
 use core::fmt;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -37,48 +38,11 @@ use jeed_krx::clock;
 use jeed_krx::recv::{IsinFilter, Mode, NetError, Receiver, TrCodeFilter};
 use jeed_shm::{RingProducer, SegmentName, ShmError};
 use std::sync::Arc;
-use std::thread::JoinHandle;
 
-/// How to start.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Options {
-    /// This run's identity, written into every segment header.
-    pub boot_id: u64,
+pub use crate::feed::Options;
 
-    /// Pin each feed thread to its `cores`. Off is for a development box
-    /// whose cores are not the conf's.
-    pub pin: bool,
-
-    /// Cadence of the report line. Zero silences it.
-    pub report_ns: u64,
-}
-
-/// A running feed.
-#[derive(Debug)]
-pub struct Feed {
-    /// The conf's `name`.
-    pub name: String,
-    handle: JoinHandle<Result<(), FeedError>>,
-}
-
-impl Feed {
-    /// `true` once the thread has returned.
-    #[inline]
-    pub fn is_finished(&self) -> bool {
-        self.handle.is_finished()
-    }
-
-    /// Waits for the thread and reports how it ended.
-    ///
-    /// A panic in the receive loop is reported as [`FeedError::Panicked`]
-    /// rather than propagated: the main thread has other feeds to stop first.
-    pub fn join(self) -> Result<(), FeedError> {
-        match self.handle.join() {
-            Ok(result) => result,
-            Err(_) => Err(FeedError::Panicked),
-        }
-    }
-}
+/// A running KRX feed.
+pub type Feed = crate::feed::Feed<FeedError>;
 
 /// Creates every feed's ring, joins its sockets, and starts its thread.
 ///
@@ -141,7 +105,7 @@ pub fn start(
             .name(name.clone())
             .spawn(move || run(&conf, opts, receiver, &trcodes, &stop))
             .map_err(|source| StartError::Spawn { feed: name.clone(), source })?;
-        feeds.push(Feed { name, handle });
+        feeds.push(Feed::new(name, handle));
     }
     Ok(feeds)
 }
@@ -262,6 +226,12 @@ impl fmt::Display for FeedError {
 }
 
 impl std::error::Error for FeedError {}
+
+impl Death for FeedError {
+    fn panicked() -> Self {
+        Self::Panicked
+    }
+}
 
 impl From<CpuError> for FeedError {
     fn from(e: CpuError) -> Self {

@@ -229,34 +229,55 @@ impl RecvBuffer {
 }
 
 /// Plain or TLS. The loop does not know which.
-enum Stream {
+///
+/// Shared with [`http`](super::http), which is the other thing in this crate
+/// that opens a TLS connection — once, on the cold path, for a start book or
+/// a ticket.
+pub(crate) enum Stream {
     Plain(TcpStream),
     Tls(Box<StreamOwned<ClientConnection, TcpStream>>),
 }
 
 impl Stream {
-    fn tcp(&self) -> &TcpStream {
+    /// Resolves and connects, negotiating TLS if `endpoint` says so.
+    ///
+    /// The socket is left blocking with no read timeout; the caller sets what
+    /// it wants ([`Link::prepare`] for the WebSocket, a deadline for HTTP).
+    pub(crate) fn open(endpoint: &Endpoint, tls: &Tls, connect_timeout: Duration) -> Result<Self, LinkError> {
+        let peer = endpoint.resolve().map_err(|e| LinkError::io("resolve", e))?;
+        let tcp = TcpStream::connect_timeout(&peer, connect_timeout)
+            .map_err(|e| LinkError::io("connect", e))?;
+        if endpoint.tls {
+            let name = ServerName::try_from(endpoint.host.clone()).map_err(|_| LinkError::Name)?;
+            let conn = ClientConnection::new(tls.config.clone(), name).map_err(LinkError::Tls)?;
+            Ok(Self::Tls(Box::new(StreamOwned::new(conn, tcp))))
+        } else {
+            Ok(Self::Plain(tcp))
+        }
+    }
+
+    pub(crate) fn tcp(&self) -> &TcpStream {
         match self {
             Self::Plain(s) => s,
             Self::Tls(s) => &s.sock,
         }
     }
 
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub(crate) fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             Self::Plain(s) => s.read(buf),
             Self::Tls(s) => s.read(buf),
         }
     }
 
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    pub(crate) fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         match self {
             Self::Plain(s) => s.write_all(buf),
             Self::Tls(s) => s.write_all(buf),
         }
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    pub(crate) fn flush(&mut self) -> io::Result<()> {
         match self {
             Self::Plain(s) => s.flush(),
             Self::Tls(s) => s.flush(),
@@ -292,18 +313,9 @@ impl Link {
     /// [`LinkOptions::handshake_timeout`]. Resolution happens here rather
     /// than once at boot — see [`Endpoint`].
     pub fn connect(endpoint: &Endpoint, opts: LinkOptions, tls: &Tls) -> Result<Self, LinkError> {
-        let peer = endpoint.resolve().map_err(|e| LinkError::io("resolve", e))?;
-        let tcp = TcpStream::connect_timeout(&peer, opts.connect_timeout)
-            .map_err(|e| LinkError::io("connect", e))?;
-        Self::prepare(&tcp, opts)?;
-
-        let stream = if endpoint.tls {
-            let name = ServerName::try_from(endpoint.host.clone()).map_err(|_| LinkError::Name)?;
-            let conn = ClientConnection::new(tls.config.clone(), name).map_err(LinkError::Tls)?;
-            Stream::Tls(Box::new(StreamOwned::new(conn, tcp)))
-        } else {
-            Stream::Plain(tcp)
-        };
+        let stream = Stream::open(endpoint, tls, opts.connect_timeout)?;
+        let peer = stream.tcp().peer_addr().map_err(|e| LinkError::io("peer_addr", e))?;
+        Self::prepare(stream.tcp(), opts)?;
         Self::open(stream, peer, endpoint, opts.handshake_timeout)
     }
 

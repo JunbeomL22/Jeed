@@ -1,0 +1,118 @@
+# conf/crypto.toml 템플릿. 이 파일을 crypto.toml 로 복사해서 채운다.
+#
+# [[feed]] 하나 = WebSocket 연결 하나 = 수신 스레드 하나 = 링 하나. `venue` 가 라우터를
+# 고르고, 그 아래 [[feed.instrument]] 가 그 연결이 구독할 종목이다. 거래소가 둘이면 피드도
+# 둘이고, 한 거래소에 연결을 둘 두고 싶어도 피드 둘이다.
+#
+# 채널 어휘는 네 단어다. 거래소가 그 스트림을 안 주면 기동 실패다(`--check` 가 잡는다):
+#
+#   venue            trade   bbo   book                delta
+#   binance-*         O       O    depth{N}@100ms      depth@100ms
+#   upbit / bithumb   O       -    orderbook           -
+#   okx               O       -    books5              books
+#   bybit-*           O       -    orderbook.{N}       -           (book 이 스냅샷+델타 둘 다 낸다)
+#   bitget-*          O       -    books / books{N}    -           (위와 같다)
+#   gate-spot         O       -    - (REST)            spot.order_book_update
+#   kucoin-*          O       -    - (REST)            /market/level2 · /contractMarket/level2
+#
+# `delta` 는 디프만 오는 채널이다. 시작 북은 binance·okx 는 `book` 채널에서, gate·kucoin 은
+# 연결될 때마다 REST 로 한 번 받아서 같은 링에 싣는다(Quote 레코드 하나). kucoin 은 주소 자체를
+# REST(bullet-public)로 받으므로 `url` 이 없고, 토큰이 만료되면 재접속 때 다시 받는다.
+#
+# `price_decimals` / `qty_decimals` 는 거래소의 종목 참조(exchangeInfo 류)에서 온 **설정**이다.
+# 틀리면 자릿수를 못 담는 프레임이 버려진다(잘라서 싣지 않는다) — 리포트 줄의 `fail` 이 는다.
+#
+# 아무것도 만들지 않고 검증만: `jeed-crypto conf/crypto.toml --check`
+# 코어 핀 없이(개발 기계):    `jeed-crypto conf/crypto.toml --no-pin`
+# 경로는 실행 디렉터리 기준이다 — 저장소 루트에서 띄운다.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 바이낸스 현물. 결합 스트림(/stream) 하나에 SUBSCRIBE 메시지로 구독한다.
+# ─────────────────────────────────────────────────────────────────────────────
+[[feed]]
+name  = "binance-spot"
+venue = "binance-spot"
+mode  = "block"         # WebSocket 은 초당 수백 건이라 block 이 기본. spin 은 코어 100%
+cores = [4]
+ring  = "jeed.crypto.binance-spot"
+ring_slots = 65536      # 슬롯 하나 640B → 약 40MB. 2의 거듭제곱이어야 한다
+# url = "wss://stream.binance.com:9443/stream"   # 거래소 기본값. 프록시·테스트넷이면 바꾼다
+# ping_secs = 30        # 이만큼 조용하면 프로토콜 ping, 두 배 동안 아무것도 안 오면 끊고 재접속
+# reconnect_secs = 5    # 재접속 간격. 지수 백오프가 아니다 — 거래소는 정해진 시각에 돌아온다
+# burst = 64            # 한 라운드에 처리하는 프레임 수
+
+[[feed.instrument]]
+symbol = "BTCUSDT"      # 거래소 표기 그대로 (대소문자 포함)
+price_decimals = 2      # tickSize 0.01
+qty_decimals = 5        # stepSize 0.00001
+channels = ["trade", "bbo", "book", "delta"]
+# depth = 10            # book 채널 단수. 바이낸스는 5 · 10 · 20
+
+[[feed.instrument]]
+symbol = "ETHUSDT"
+price_decimals = 2
+qty_decimals = 4
+channels = ["trade", "bbo"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 업비트. 프레임이 binary 로 오고, 서버가 먼저 ping 한다. 방언 ping 없음.
+# ─────────────────────────────────────────────────────────────────────────────
+[[feed]]
+name  = "upbit"
+venue = "upbit"
+mode  = "block"
+cores = [5]
+ring  = "jeed.crypto.upbit"
+ring_slots = 16384
+
+[[feed.instrument]]
+symbol = "KRW-BTC"
+price_decimals = 0      # 원 단위
+qty_decimals = 8
+channels = ["trade", "book"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 게이트 현물. 소켓엔 디프만 온다 — 시작 북은 연결될 때마다 REST 로 한 번 받는다.
+# ─────────────────────────────────────────────────────────────────────────────
+[[feed]]
+name  = "gate-spot"
+venue = "gate-spot"
+mode  = "block"
+cores = [6]
+ring  = "jeed.crypto.gate-spot"
+ring_slots = 16384
+# rest = "https://api.gateio.ws"   # REST 기본값. 프록시·테스트면 바꾼다
+
+[[feed.instrument]]
+symbol = "BTC_USDT"
+price_decimals = 1
+qty_decimals = 4
+channels = ["trade", "delta"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 쿠코인 현물. 주소는 bullet-public 티켓에서 온다 (url 없음). 시작 북도 REST.
+# ─────────────────────────────────────────────────────────────────────────────
+[[feed]]
+name  = "kucoin-spot"
+venue = "kucoin-spot"
+mode  = "block"
+cores = [7]
+ring  = "jeed.crypto.kucoin-spot"
+ring_slots = 16384
+# rest = "https://api.kucoin.com"
+
+[[feed.instrument]]
+symbol = "BTC-USDT"
+price_decimals = 1
+qty_decimals = 8
+channels = ["trade", "delta"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 장애 감지 (feed_handler.md §9). KRX 와 같다 — 없으면 켜진 값, 끄려면 0.
+# ─────────────────────────────────────────────────────────────────────────────
+[health]
+heartbeat_ms = 100      # 연결이 없어도 찍힌다 — "살아 있는데 피드가 없다" 와 "죽었다" 는 달라야 한다
+stale_ms = 500          # recv_ns - venue_ns 가 이걸 넘으면 STALE 플래그
+
+[log]
+report_secs = 10

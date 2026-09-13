@@ -6,3 +6,6 @@
 mod common;
 mod futures;
 mod spot;
+
+#[cfg(feature = "recv")]
+mod router;

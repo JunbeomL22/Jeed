@@ -23,10 +23,18 @@ path = "src/bin/krx.rs"
 # same `doc/jeed_krx/` directory as the `jeed-krx` handler crate's.
 doc = false
 
+[[bin]]
+name = "jeed-crypto"
+path = "src/bin/crypto.rs"
+doc = false
+
 [dependencies]
 jeed-wire = { path = "../jeed-wire" }
 jeed-shm = { path = "../jeed-shm" }
 jeed-krx = { path = "../jeed-krx" }
+# With `recv` (the default): the WebSocket loop, TLS, the venue routers and
+# the one-request HTTP client the crypto binary uses for start books.
+jeed-crypto = { path = "../jeed-crypto" }
 
 # No TOML crate. `toml` brings `serde` and a dozen transitive packages for two
 # configuration files whose grammar is tables, arrays of tables, inline

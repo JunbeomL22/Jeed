@@ -46,11 +46,17 @@ pub struct Stats {
     /// Heartbeat records published to the ring.
     pub heartbeats: u64,
 
-    /// Text messages the router refused. Nothing was published.
+    /// Messages the router refused. Nothing was published.
     pub decode_failed: u64,
 
-    /// Binary messages, which no venue in this crate sends. Counted and
-    /// dropped: a venue that starts sending them has changed its protocol.
+    /// REST bodies handed to the router as start books
+    /// ([`Pipeline::ingest_rest`](super::Pipeline::ingest_rest)). Not in
+    /// `messages`: they did not come off the socket.
+    pub rest: u64,
+
+    /// Binary messages. Routed like text — Upbit and Bithumb send their JSON
+    /// in binary frames — and counted here so a venue that starts sending
+    /// them unexpectedly is visible.
     pub binary: u64,
 
     /// Frames that were part of a fragmented message, including the first.

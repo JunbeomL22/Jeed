@@ -3,16 +3,15 @@
 //! Exit codes: 0 stopped on request · 1 usage or conf · 2 could not start ·
 //! 3 a feed died.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::AtomicBool;
 use jeed::conf::{KrxConf, TrCodeTable};
 use jeed::cpu::Topology;
 use jeed::krx::{self, Options};
-use jeed::{boot_id, error, info, signal, warn};
+use jeed::{boot_id, error, feed, info, signal, warn};
 use jeed_krx::recv::{IsinFilter, Mode, parse_isin_list};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
 
 const USAGE: &str = "usage: jeed-krx <conf.toml> [--check] [--no-pin]\n  \
     --check   validate the conf and exit without creating anything\n  \
@@ -152,7 +151,7 @@ fn main() -> ExitCode {
 
     let stop = Arc::new(AtomicBool::new(false));
     let opts = Options { boot_id: boot_id(), pin: args.pin, report_ns: conf.report_secs * 1_000_000_000 };
-    let mut feeds = match krx::start(&conf, &isins, opts, Arc::clone(&stop)) {
+    let feeds = match krx::start(&conf, &isins, opts, Arc::clone(&stop)) {
         Ok(f) => f,
         Err(e) => {
             error!("could not start: {e}");
@@ -161,34 +160,5 @@ fn main() -> ExitCode {
     };
 
     // ── run ─────────────────────────────────────────────────────────────
-    let mut failed = false;
-    loop {
-        if signal::requested() && !stop.load(Ordering::Relaxed) {
-            info!("stop requested");
-            stop.store(true, Ordering::Relaxed);
-        }
-
-        if let Some(i) = feeds.iter().position(krx::Feed::is_finished) {
-            let feed = feeds.swap_remove(i);
-            let name = feed.name.clone();
-            match feed.join() {
-                Ok(()) => info!("{name}: stopped"),
-                Err(e) => {
-                    error!("{name}: {e}");
-                    failed = true;
-                    // One feed down is the whole handler down: the consumer
-                    // sees one boot_id per ring and should not be left with
-                    // half a market.
-                    stop.store(true, Ordering::Relaxed);
-                }
-            }
-        }
-
-        if feeds.is_empty() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-
-    if failed { ExitCode::from(3) } else { ExitCode::SUCCESS }
+    if feed::wait(feeds, &stop) { ExitCode::from(3) } else { ExitCode::SUCCESS }
 }

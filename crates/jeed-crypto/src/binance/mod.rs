@@ -33,6 +33,8 @@
 //! [`Venue`]: jeed_wire::Venue
 
 pub mod futures;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod spot;
 
 /// `true` when the aggressor was the seller.

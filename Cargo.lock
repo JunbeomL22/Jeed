@@ -39,6 +39,7 @@ dependencies = [
 name = "jeed"
 version = "0.1.0"
 dependencies = [
+ "jeed-crypto",
  "jeed-krx",
  "jeed-shm",
  "jeed-wire",

@@ -4,3 +4,6 @@ mod common;
 mod delta;
 mod snapshot;
 mod trade;
+
+#[cfg(feature = "recv")]
+mod router;

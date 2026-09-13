@@ -43,23 +43,32 @@
 
 /// `wss://host:port/path` — what the loop connects to.
 pub mod endpoint;
+/// One HTTP request, for a start book or a ticket. Never from the loop.
+pub mod http;
 /// The connection: TCP, TLS, and WebSocket frames in and out.
 pub mod link;
 /// Route → decode → publish, with no transport in it.
 pub mod pipeline;
 /// The connect / read / answer loop.
 pub mod receiver;
+/// What a router is built from: instruments, channels, REST requests.
+pub mod route;
 /// Counters the receive loop keeps.
 pub mod stats;
+/// One router type over every venue's, for a binary that picks by conf.
+pub mod venue;
 /// RFC 6455 — handshake, frames, fragments.
 pub mod ws;
 
 pub use endpoint::{Endpoint, EndpointError};
+pub use http::{HttpError, Response};
 pub use link::{
     CLOSE_GOING_AWAY, CLOSE_NORMAL, CLOSE_PROTOCOL_ERROR, Frame, Link, LinkError, LinkOptions, Tls,
     WS_MESSAGE_BUFFER, WS_RECV_BUFFER, WS_SEND_BUFFER,
 };
-pub use pipeline::{MAX_KEEPALIVE_LEN, Outcome, Pipeline, Router};
+pub use pipeline::{FAILURE_HEAD, Failure, MAX_KEEPALIVE_LEN, Outcome, Pipeline, Router};
 pub use receiver::{Config, LinkState, Mode, Receiver, SendError};
+pub use route::{Channel, ChannelSet, HttpRequest, Method, RestBook, RouterError, Subscription};
 pub use stats::Stats;
+pub use venue::VenueRouter;
 pub use ws::{Opcode, WsError};

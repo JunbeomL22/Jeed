@@ -15,7 +15,11 @@
 //! 1. **Numbers are numbers.** `"trade_price":52430000.0`, unquoted, where
 //!    every other venue in this crate sends `"52430000.0"`. Handled by
 //!    [`parse_scalar_bytes`](crate::json::parse_scalar_bytes) rather than by a
-//!    separate set of decoders.
+//!    separate set of decoders. And above ten million the serialiser switches
+//!    to **exponent form** — a live KRW-BTC book arrives as
+//!    `"ask_price":1.04525E8` — which [`Instrument::price`](crate::Instrument::price)
+//!    unfolds digit for digit before the read
+//!    ([`plain_decimal`](crate::json::plain_decimal)).
 //! 2. **Two spellings of every key.** A subscription can ask for `isOnlySnapshot`
 //!    style DEFAULT keys or the SIMPLE abbreviations (`ty`, `cd`, `tms`, `obu`,
 //!    `ap`), and the venue then uses that spelling for the whole connection.
@@ -40,6 +44,8 @@
 //! same book. Absent is a fact; a stand-in is not (`documents/feed_handler.md`
 //! §8).
 
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod snapshot;
 pub mod trade;
 

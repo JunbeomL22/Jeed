@@ -17,6 +17,7 @@
 //! header, never travelling beside a value (`jeed_convert`'s crate docs).
 
 use crate::error::{CryptoError, InstrumentError};
+use crate::json::{PLAIN_DECIMAL_LEN, plain_decimal};
 use jeed_convert::DynamicExtractor;
 use jeed_wire::{
     BookPrice, BookQuantity, RecordHeader, Scale, Symbol, UnixNano, Venue, WireKind,
@@ -107,14 +108,30 @@ impl Instrument {
     /// real-looking price. Binance pads to full precision, so the digits past
     /// the scale are normally zeros and this costs one comparison
     /// (`jeed_convert::DynamicExtractor::to_i64_exact`).
+    ///
+    /// A number in exponent form (`1.04525E8` — Upbit and Bithumb above ten
+    /// million) is rewritten plain first, digit for digit
+    /// ([`plain_decimal`]). Every other venue's numbers pass through
+    /// untouched; the check for an `E` is one scan of a short field.
     #[inline]
     pub fn price(&self, bytes: &[u8], key: &'static str) -> Result<BookPrice, CryptoError> {
+        let mut plain = [0u8; PLAIN_DECIMAL_LEN];
+        let bytes = match plain_decimal(bytes, &mut plain) {
+            Some(n) => &plain[..n],
+            None => bytes,
+        };
         self.price.to_i64_exact(bytes).map_err(|err| CryptoError::Field { key, err })
     }
 
-    /// Reads a decimal-string size on this instrument's scale.
+    /// Reads a decimal-string size on this instrument's scale. Exponent form
+    /// is handled as in [`price`](Self::price).
     #[inline]
     pub fn qty(&self, bytes: &[u8], key: &'static str) -> Result<BookQuantity, CryptoError> {
+        let mut plain = [0u8; PLAIN_DECIMAL_LEN];
+        let bytes = match plain_decimal(bytes, &mut plain) {
+            Some(n) => &plain[..n],
+            None => bytes,
+        };
         self.qty.to_u64_exact(bytes).map_err(|err| CryptoError::Field { key, err })
     }
 

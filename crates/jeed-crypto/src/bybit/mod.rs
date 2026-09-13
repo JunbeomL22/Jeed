@@ -53,6 +53,8 @@
 //! `u` is what chains a book, and `u` is what is carried.
 
 pub mod book;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod trade;
 
 /// Bit positions in a Bybit decoder's [`crate::mask`] word.

@@ -385,3 +385,53 @@ fn a_level_pair_reads_unquoted_numbers_too() {
     assert_eq!(out[1].price, 11_925_000);
     assert_eq!(out[1].qty, 100_000);
 }
+
+// ---------------------------------------------------------------------------
+// Exponent notation
+// ---------------------------------------------------------------------------
+
+mod exponent {
+    use jeed_crypto::json::{PLAIN_DECIMAL_LEN, plain_decimal};
+
+    fn plain(s: &str) -> Option<String> {
+        let mut out = [0u8; PLAIN_DECIMAL_LEN];
+        plain_decimal(s.as_bytes(), &mut out).map(|n| String::from_utf8(out[..n].to_vec()).unwrap())
+    }
+
+    #[test]
+    fn a_number_without_an_exponent_is_left_to_the_caller() {
+        assert_eq!(plain("104525000.0"), None);
+        assert_eq!(plain("0.00084280"), None);
+        assert_eq!(plain(""), None);
+    }
+
+    #[test]
+    fn upbits_prices_come_back_plain() {
+        // Java's Double.toString, above ten million.
+        assert_eq!(plain("1.04525E8").as_deref(), Some("104525000"));
+        assert_eq!(plain("1.0452512E8").as_deref(), Some("104525120"));
+        assert_eq!(plain("1.04525123456E8").as_deref(), Some("104525123.456"));
+        assert_eq!(plain("2E7").as_deref(), Some("20000000"));
+    }
+
+    #[test]
+    fn small_numbers_and_signs_are_moved_not_computed() {
+        assert_eq!(plain("2e-7").as_deref(), Some("0.0000002"));
+        assert_eq!(plain("8.428E-4").as_deref(), Some("0.0008428"));
+        assert_eq!(plain("1.5e0").as_deref(), Some("1.5"));
+        assert_eq!(plain("15e-1").as_deref(), Some("1.5"));
+        assert_eq!(plain("-1.5E+2").as_deref(), Some("-150"));
+        assert_eq!(plain("+2.5E1").as_deref(), Some("25"));
+    }
+
+    #[test]
+    fn junk_and_absurd_exponents_are_refused() {
+        assert_eq!(plain("1.5E"), None);
+        assert_eq!(plain("E8"), None);
+        assert_eq!(plain("1.5.2E3"), None);
+        assert_eq!(plain("1xE3"), None);
+        assert_eq!(plain("1E1000"), None);
+        assert_eq!(plain("1E99"), None, "a hundred digits is not a price");
+        assert_eq!(plain("1E-99"), None);
+    }
+}

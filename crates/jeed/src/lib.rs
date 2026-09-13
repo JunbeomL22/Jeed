@@ -14,7 +14,9 @@
 //! for a binary is the same for all three — read the conf, create the
 //! segments, pin the threads, wire the sink to a ring, run until told to stop
 //! (`documents/todo.md` §2) — and that is what lives here. `src/bin/krx.rs`
-//! is the few dozen lines that are KRX's alone.
+//! and `src/bin/crypto.rs` are the few dozen lines that are each handler's
+//! alone; [`krx`] and [`crypto`] are their wiring, [`feed`] what the two
+//! wirings share.
 //!
 //! ## What is deliberately not here
 //!
@@ -31,11 +33,14 @@
 pub mod boot;
 pub mod conf;
 pub mod cpu;
+pub mod crypto;
+pub mod feed;
 pub mod krx;
 pub mod log;
 pub mod signal;
 pub mod toml;
 
 pub use boot::boot_id;
-pub use conf::{ConfError, KrxConf, TrCodeTable};
+pub use conf::{ConfError, CryptoConf, KrxConf, TrCodeTable};
 pub use cpu::{CpuError, Topology};
+pub use feed::Options;

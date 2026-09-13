@@ -56,6 +56,8 @@
 //! to the year 56000.
 
 pub mod futures;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod spot;
 
 /// The symbol in a `/channel:SYMBOL` topic.

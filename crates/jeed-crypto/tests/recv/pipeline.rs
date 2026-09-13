@@ -141,3 +141,29 @@ fn the_sink_comes_back() {
     p.ingest(SPOT_TRADE, RECV_NS);
     assert_eq!(p.into_sink().len(), 1);
 }
+
+#[test]
+fn a_refused_message_is_kept_once_with_its_head() {
+    let mut p = Pipeline::new(0, Fake::new(), Collect::new());
+    assert_eq!(p.take_failure(), None, "nothing refused yet");
+
+    let junk = br#"{"e":"trade","s":"ETHUSDT"}"#;
+    assert!(matches!(p.ingest(junk, RECV_NS), Outcome::Failed(_)));
+    let f = p.take_failure().expect("kept");
+    assert_eq!(f.error, CryptoError::SymbolMismatch);
+    assert_eq!(f.head(), junk);
+    assert_eq!(f.total, junk.len());
+    assert_eq!(p.take_failure(), None, "taking clears it");
+
+    // A long message keeps only its head, and says how long it was.
+    let long = format!(r#"{{"e":"trade","s":"ETHUSDT","pad":"{}"}}"#, "x".repeat(1000));
+    assert!(matches!(p.ingest(long.as_bytes(), RECV_NS), Outcome::Failed(_)));
+    let f = p.take_failure().expect("kept");
+    assert_eq!(f.len, jeed_crypto::recv::FAILURE_HEAD);
+    assert_eq!(f.total, long.len());
+    assert_eq!(f.head(), &long.as_bytes()[..jeed_crypto::recv::FAILURE_HEAD]);
+
+    // A good message does not disturb it either way.
+    p.ingest(SPOT_TRADE, RECV_NS);
+    assert_eq!(p.take_failure(), None);
+}

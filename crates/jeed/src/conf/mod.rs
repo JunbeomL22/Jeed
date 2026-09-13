@@ -1,10 +1,14 @@
 //! Deployment configuration — the typed view over [`toml`].
 //!
 //! ```text
-//! conf/krx.toml ──→ toml::parse ──→ Table ──→ KrxConf ──→ validate ──→ start
-//!                                                 ↑
-//! conf/krx_trcodes.toml ──→ TrCodeTable ──────────┘  (warnings only)
+//! conf/krx.toml ────→ toml::parse ──→ Table ──→ KrxConf ────→ validate ──→ start
+//!                                                   ↑
+//! conf/krx_trcodes.toml ──→ TrCodeTable ────────────┘  (warnings only)
+//! conf/crypto.toml ─→ toml::parse ──→ Table ──→ CryptoConf ─→ validate ──→ start
 //! ```
+//!
+//! The placement rules — cores, rings, SMT siblings — are one module,
+//! [`rules`], because a KRX feed and a crypto feed are placed the same way.
 //!
 //! ## Strict on keys, explicit on zero
 //!
@@ -21,14 +25,18 @@
 //! service wrapper that starts the handler elsewhere sets the directory, not
 //! the conf.
 
+pub mod crypto;
 pub mod krx;
+pub mod rules;
 pub mod trcodes;
 
 use crate::toml::{self, Table, Value};
 use core::fmt;
 use std::path::{Path, PathBuf};
 
+pub use crypto::{CryptoConf, CryptoFeedConf, InstrumentConf};
 pub use krx::{FeedConf, KrxConf, Warning};
+pub use rules::RuleError;
 pub use trcodes::TrCodeTable;
 
 /// The `[health]` section, shared by every feed.
@@ -266,7 +274,7 @@ pub enum ConfError {
     },
 
     /// A rule that spans keys or sections was broken.
-    Rule(krx::RuleError),
+    Rule(RuleError),
 }
 
 impl fmt::Display for ConfError {
@@ -299,8 +307,8 @@ impl std::error::Error for ConfError {
     }
 }
 
-impl From<krx::RuleError> for ConfError {
-    fn from(r: krx::RuleError) -> Self {
+impl From<RuleError> for ConfError {
+    fn from(r: RuleError) -> Self {
         Self::Rule(r)
     }
 }

@@ -514,3 +514,133 @@ fn pair(inst: &Instrument, data: &[u8], pos: usize) -> Result<(i64, u64, usize),
 
     Ok((price, qty, pos))
 }
+
+// ============================================================================
+// Exponent notation
+// ============================================================================
+
+/// Longest plain decimal [`plain_decimal`] will write.
+pub const PLAIN_DECIMAL_LEN: usize = 64;
+
+/// Rewrites a number in exponent notation (`1.04525E8`, `2e-7`) as a plain
+/// decimal (`104525000`, `0.0000002`) into `out`, returning its length.
+///
+/// `None` when `bytes` has no exponent — the caller then uses `bytes` as
+/// they are, which is every number every venue but Upbit sends — or when
+/// the exponent would need more than [`PLAIN_DECIMAL_LEN`] digits, which is
+/// not a price.
+///
+/// Upbit and Bithumb serialise numbers as JSON numbers, and their serialiser
+/// switches to exponent form above ten million: a KRW price arrives as
+/// `1.04525E8`. The decimal readers take digits and one point, so the form
+/// is undone here, before the read, with no rounding — the digits are moved,
+/// not recomputed.
+pub fn plain_decimal(bytes: &[u8], out: &mut [u8; PLAIN_DECIMAL_LEN]) -> Option<usize> {
+    let e = bytes.iter().position(|&b| b == b'E' || b == b'e')?;
+    let (mantissa, exponent) = (&bytes[..e], &bytes[e + 1..]);
+
+    let (negative, mantissa) = match mantissa.first() {
+        Some(b'-') => (true, &mantissa[1..]),
+        Some(b'+') => (false, &mantissa[1..]),
+        _ => (false, mantissa),
+    };
+
+    // The mantissa's digits, and where its point sits among them.
+    let mut digits = [0u8; PLAIN_DECIMAL_LEN];
+    let mut n = 0usize;
+    let mut point: Option<usize> = None;
+    for &b in mantissa {
+        if b.is_ascii_digit() {
+            if n == PLAIN_DECIMAL_LEN {
+                return None;
+            }
+            digits[n] = b;
+            n += 1;
+        } else if b == b'.' && point.is_none() {
+            point = Some(n);
+        } else {
+            return None;
+        }
+    }
+    if n == 0 {
+        return None;
+    }
+    let point = point.unwrap_or(n) as i64;
+
+    let (exp_negative, exp_digits) = match exponent.first() {
+        Some(b'-') => (true, &exponent[1..]),
+        Some(b'+') => (false, &exponent[1..]),
+        _ => (false, exponent),
+    };
+    if exp_digits.is_empty() || exp_digits.len() > 3 || !exp_digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let mut exp: i64 = 0;
+    for &b in exp_digits {
+        exp = exp * 10 + i64::from(b - b'0');
+    }
+    if exp_negative {
+        exp = -exp;
+    }
+
+    // Where the point lands once the exponent is applied.
+    let shifted = point + exp;
+    let n_i = n as i64;
+    let mut len = 0usize;
+    let mut push = |b: u8| -> bool {
+        if len == PLAIN_DECIMAL_LEN {
+            return false;
+        }
+        out[len] = b;
+        len += 1;
+        true
+    };
+    if negative && !push(b'-') {
+        return None;
+    }
+    if shifted <= 0 {
+        // 0.000ddd
+        if !push(b'0') || !push(b'.') {
+            return None;
+        }
+        for _ in 0..(-shifted) {
+            if !push(b'0') {
+                return None;
+            }
+        }
+        for &d in &digits[..n] {
+            if !push(d) {
+                return None;
+            }
+        }
+    } else if shifted >= n_i {
+        // ddd000
+        for &d in &digits[..n] {
+            if !push(d) {
+                return None;
+            }
+        }
+        for _ in 0..(shifted - n_i) {
+            if !push(b'0') {
+                return None;
+            }
+        }
+    } else {
+        // dd.ddd
+        let split = shifted as usize;
+        for &d in &digits[..split] {
+            if !push(d) {
+                return None;
+            }
+        }
+        if !push(b'.') {
+            return None;
+        }
+        for &d in &digits[split..n] {
+            if !push(d) {
+                return None;
+            }
+        }
+    }
+    Some(len)
+}

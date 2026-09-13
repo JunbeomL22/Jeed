@@ -68,7 +68,7 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
   쓰고 바이너리가 shm 링에 연결한다. 테스트는 `Vec<WireRecord>` 싱크로 돈다.
 - 바이너리는 `jeed` 한 크레이트에 피드마다 `[[bin]]`. conf 로딩·코어 핀·세그먼트 생성·시그널·
   리포트가 세 핸들러에서 동일하므로 lib 절반에 한 번만 쓰고, `src/bin/*.rs` 는 피드마다 다른
-  몇십 줄이다. **`jeed-krx` 가 있다 (2026-09-13, §6).** fix·crypto 는 같은 배선 위에 아직 없다.
+  몇십 줄이다. **`jeed-krx`·`jeed-crypto` 가 있다 (2026-09-13, §6).** fix 는 어댑터가 없어 아직.
 - **외부 의존은 `rustls`(+`webpki-roots`) 하나다** (2026-09-13). `wss://` 가 TLS 라 피할 수 없고,
   `jeed-crypto` 의 `recv` 피처(기본 켜짐) 뒤에 있어서 디코더만 쓰는 쪽은 `default-features = false`
   로 TLS 를 링크하지 않는다. WebSocket 프레이밍은 직접 썼다 — §6 "`jeed-crypto` 수신부".
@@ -591,9 +591,40 @@ spin 이냐 block 이냐가 실제 동작이다.
         "분배그룹번호 매핑" 을 카운터로 확인하려고 가입만 해 둔 것이고, 디코더가 생기면 사라진다
 - [ ] **`jeed-fix` 바이너리** — 배선은 있고 입주자가 없다(§10). 어댑터가 붙는 날 `src/bin/fix.rs`
       몇십 줄이다: conf 에 `endpoint`·`sender`/`target`·심볼 필터, 로그온 후 `subscribe`
-- [ ] **`jeed-crypto` 바이너리** — 여기서 두 가지가 더 정해진다: **거래소별 `Router` 구현**
-      (스트림 → 디코더, 구독 메시지, 방언 ping)과 **REST 시작 북**(게이트·쿠코인 현물)을 누가
-      언제 가져와 `snapshot::decode` 에 주느냐. conf 는 `[[feed]]` 하나 = 연결 하나 = 링 하나
+- [x] **`jeed-crypto` 바이너리 + 거래소별 `Router` + REST 시작 북** (2026-09-13). 워크스페이스
+      1,238 건 통과(크립토 라우터·switchboard·HTTP 클라이언트 +100 여 건, `jeed` conf·rules·e2e
+      +20 여 건), Windows·리눅스(WSL) 동일, clippy·rustdoc 무경고. `jeed` 의 e2e 는 루프백 WS 서버
+      둘과 HTTP 서버 하나를 띄워 바이낸스 체결 · 게이트 REST 시작 북 + 디프 + 체결이 링에 도착하는
+      것까지 본다. **실제 거래소 4 곳(바이낸스·게이트·쿠코인·업비트)에 14 초 붙여 봤다** — 전부
+      연결·구독·수신, 쿠코인은 티켓 → 소켓 → REST 북까지.
+  - **conf 는 네 단어**(`trade` `bbo` `book` `delta`)로 말하고 라우터가 거래소 방언으로 옮긴다.
+        거래소가 안 주는 채널·단수는 라우터 생성자가 거부하고 `validate` 가 그 생성자를 부른다
+        (`--check` 와 기동이 같은 답). `[[feed.instrument]]` 에 심볼·스케일·채널·단수.
+        `venue` 이름 12 개(`binance-spot` … `kucoin-futures`)가 `Venue` 바이트를 고른다
+  - **라우터는 요청을 돌려주고 바이너리가 수행한다.** `Router` 트레이트에 `subscriptions()` ·
+        `rest_books()`/`route_rest()` · `ticket()`/`endpoint_from_ticket()` 이 기본 구현으로
+        붙었다. 소켓·HTTP 는 라우터에 없다 — `jeed-fix` 의 `Reply` 와 같은 논리라 베뉴 대화가
+        상대 없이 테스트된다. `recv::VenueRouter` 가 enum 으로 일곱 라우터를 감싼다
+        (`route<S>` 가 제네릭이라 `dyn` 이 안 된다)
+  - **HTTP 클라이언트를 `recv::http` 에 두었다** — 요청 하나, `Content-Length`·chunked·EOF, 같은
+        `rustls`. 외부 의존은 여전히 하나. 수신 루프는 절대 안 부르고 바이너리가 열릴 때마다
+        라운드 사이에 부른다. 쿠코인은 연결 전 `bullet-public` 티켓(주소+토큰+ping 주기),
+        끊길 때마다 다시 받는다(토큰 만료). 쿠코인 현물 시작 북은 `level2_100`(전체 북 엔드포인트는
+        API 키가 필요하고 와이어는 어차피 10단)
+  - **배치 규칙을 `conf::rules` 로 뺐다.** KRX conf 와 크립토 conf 가 `Placement` 로 같은
+        `check_placement` 를 부른다. `RuleError` 는 하나(KRX 소켓·trcode 변형 + 크립토 종목·라우터
+        변형). `feed::{Options, Feed<E>, wait}` 도 두 바이너리가 공유한다
+  - **실제 회선에서 찾은 것 둘 (리포트에 "거부 #n: 원인 · 프레임 앞부분" 을 찍게 한 덕에):**
+        ① **업비트는 천만 이상 숫자를 지수 표기로 보낸다** — `"ask_price":1.04525E8`. 캡처 프레임
+        에는 없던 모양이라 디코더 테스트가 전부 통과하고도 실제로는 북 전부가 거부됐다.
+        `json::plain_decimal` 이 자릿수를 옮겨 평범한 십진수로 편 뒤 `Instrument::price/qty` 가
+        읽는다(계산이 아니라 이동이라 반올림이 없다). ② 업비트·빗썸은 **binary 프레임**으로 JSON 을
+        보낸다 — 루프가 binary 를 버리던 것을 라우터로 넘기게 바꿨다. 그리고 바이낸스 BTCUSDT
+        `@depth@100ms` 는 1% 남짓, 게이트는 가끔 **32단을 넘는 델타**를 보낸다 — 설계대로 버려지고
+        (`DeltaOverflow`) 소비자가 리싱크할 자리다. 자르지 않는 이유는 CLAUDE.md 에
+  - 안 한 것: 쿠코인 선물 실접속(현물만 붙여 봤다), 바이낸스 `@depth` 의 REST 시작 북(`book`
+        채널이 있어 안 넣었다; 전체 북이 필요해지면 `rest_books` 한 줄), 라우터 심볼 조회의 해시
+        테이블(피드당 종목이 몇 개라 선형 비교로 충분)
 - [ ] **pcap 리플레이 검증** — `E:/Data/krx_pcap` 을 넣어 §4 의 대조 + 종료키워드·길이 통계
 
 ## 7. feed_handler.md §15 미구현

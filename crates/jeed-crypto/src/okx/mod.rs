@@ -46,6 +46,8 @@
 //! `delta_flags` bit, with no change to any other field.
 
 pub mod book;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod trade;
 
 /// Bit positions in an OKX decoder's [`crate::mask`] word.

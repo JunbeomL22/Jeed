@@ -50,6 +50,8 @@
 //! [`Instrument`]: crate::Instrument
 
 pub mod book;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod snapshot;
 pub mod trade;
 

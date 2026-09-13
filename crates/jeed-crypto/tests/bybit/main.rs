@@ -3,3 +3,6 @@
 mod book;
 mod common;
 mod trade;
+
+#[cfg(feature = "recv")]
+mod router;

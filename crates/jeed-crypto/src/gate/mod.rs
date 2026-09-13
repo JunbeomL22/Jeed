@@ -48,6 +48,8 @@
 //! [`CryptoError::Missing`]: crate::CryptoError::Missing
 
 pub mod delta;
+#[cfg(feature = "recv")]
+pub mod router;
 pub mod snapshot;
 pub mod trade;
 

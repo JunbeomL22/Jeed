@@ -37,6 +37,8 @@
 //! publishes passes the age check on the way through.
 
 use crate::error::CryptoError;
+use crate::recv::endpoint::Endpoint;
+use crate::recv::route::{HttpRequest, RestBook, RouterError};
 use crate::recv::stats::Stats;
 use jeed_wire::{
     HeartbeatPayload, RecordHeader, RecordSink, SYMBOL_LEN, UnixNano, Venue, WireKind, WireRecord,
@@ -49,13 +51,23 @@ use jeed_wire::{
 /// crate asks for; 256 leaves room for one that wants a timestamp with it.
 pub const MAX_KEEPALIVE_LEN: usize = 256;
 
-/// Turns one text message into wire records. The venue layer.
+/// Turns one message into wire records. The venue layer.
+///
+/// Only [`venue`](Self::venue) and [`route`](Self::route) are required. The
+/// rest describe the venue's *conversation* — what to send after connecting,
+/// what to fetch over REST, what to ping with — and default to "nothing",
+/// which is right for a venue that is subscribed in its URL and pings us.
+/// None of them touch a socket: they say what, and the binary does it.
 pub trait Router {
     /// The venue every record on this connection carries. Stamped on the
     /// heartbeat record, which has no message to take it from.
     fn venue(&self) -> Venue;
 
     /// Publishes the records `msg` implies and returns how many.
+    ///
+    /// `msg` is a text or binary message, whole. Binary because Upbit and
+    /// Bithumb send their JSON in binary frames; a router for a venue that
+    /// never does may treat one as it likes.
     ///
     /// Zero is an ordinary answer — a subscription acknowledgement, a venue
     /// pong, a channel this handler did not ask for but was sent anyway.
@@ -81,6 +93,61 @@ pub trait Router {
         let _ = (now, out);
         None
     }
+
+    /// Text messages to send after every open, in order.
+    ///
+    /// The loop never subscribes on its own — what to ask for and how to ask
+    /// is venue conversation. The binary sends these each time
+    /// [`Stats::opens`] moves. Empty for a venue subscribed in its URL.
+    fn subscriptions(&self) -> Vec<Vec<u8>> {
+        Vec::new()
+    }
+
+    /// Start books to fetch over REST after subscribing.
+    ///
+    /// For a venue whose diff channel never sends a whole book (Gate, KuCoin).
+    /// The binary fetches each and hands the body to
+    /// [`route_rest`](Self::route_rest). Empty for everyone else.
+    fn rest_books(&self) -> Vec<RestBook> {
+        Vec::new()
+    }
+
+    /// Publishes the book in a REST `body` fetched for
+    /// [`rest_books`](Self::rest_books)`[…].instrument`.
+    ///
+    /// A body has no envelope to route by, which is why the instrument is
+    /// named rather than found. The default refuses, for a router that asked
+    /// for nothing.
+    fn route_rest<S: RecordSink>(
+        &mut self,
+        instrument: usize,
+        body: &[u8],
+        recv_ns: UnixNano,
+        sink: &mut S,
+    ) -> Result<usize, CryptoError> {
+        let _ = (instrument, body, recv_ns, sink);
+        Err(CryptoError::Empty)
+    }
+
+    /// A REST call that must succeed before the socket can be dialled.
+    ///
+    /// KuCoin hands out its WebSocket address and a token through
+    /// `bullet-public`, and both expire — so the binary makes this call
+    /// before every connection attempt and gives the body to
+    /// [`endpoint_from_ticket`](Self::endpoint_from_ticket). `None` for a
+    /// venue whose address is known in advance.
+    fn ticket(&self) -> Option<HttpRequest> {
+        None
+    }
+
+    /// The endpoint a ticket body names.
+    ///
+    /// `&mut self` because the body may also carry the venue's ping cadence,
+    /// which the router keeps for [`keepalive`](Self::keepalive).
+    fn endpoint_from_ticket(&mut self, body: &[u8]) -> Result<Endpoint, RouterError> {
+        let _ = body;
+        Err(RouterError::Ticket("this venue issues no ticket"))
+    }
 }
 
 /// What one message turned into.
@@ -104,6 +171,44 @@ impl Outcome {
     }
 }
 
+/// Bytes of a refused message kept for the log.
+pub const FAILURE_HEAD: usize = 240;
+
+/// A message the router refused, and how it began.
+///
+/// `Copy` and fixed-size on purpose: it is written on the receive path when
+/// a decode fails, and a failure that allocated would make a venue sending
+/// junk at line rate a memory problem as well.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Failure {
+    /// Why.
+    pub error: CryptoError,
+
+    /// The first [`FAILURE_HEAD`] bytes of the message; see [`head`](Self::head).
+    pub bytes: [u8; FAILURE_HEAD],
+
+    /// How many of `bytes` are the message's.
+    pub len: usize,
+
+    /// The whole message's length.
+    pub total: usize,
+}
+
+impl Failure {
+    fn new(error: CryptoError, msg: &[u8]) -> Self {
+        let len = msg.len().min(FAILURE_HEAD);
+        let mut bytes = [0u8; FAILURE_HEAD];
+        bytes[..len].copy_from_slice(&msg[..len]);
+        Self { error, bytes, len, total: msg.len() }
+    }
+
+    /// The kept head of the message.
+    #[inline]
+    pub fn head(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
+}
+
 /// Route, decode and publish — one message at a time.
 #[derive(Debug)]
 pub struct Pipeline<R, S> {
@@ -111,6 +216,7 @@ pub struct Pipeline<R, S> {
     stats: Stats,
     router: R,
     sink: S,
+    last_failure: Option<Failure>,
 }
 
 impl<R: Router, S: RecordSink> Pipeline<R, S> {
@@ -121,16 +227,37 @@ impl<R: Router, S: RecordSink> Pipeline<R, S> {
     /// conf must say on purpose rather than reach by omission
     /// (`documents/feed_handler.md` §9).
     pub fn new(stale_ns: u64, router: R, sink: S) -> Self {
-        Self { stale_ns, stats: Stats::default(), router, sink }
+        Self { stale_ns, stats: Stats::default(), router, sink, last_failure: None }
     }
 
-    /// Runs one text message through the router.
+    /// Runs one message through the router.
     ///
     /// `recv_ns` is stamped by the caller the instant the frame came off the
     /// socket, not taken here — the clock read belongs next to the `read`.
     pub fn ingest(&mut self, msg: &[u8], recv_ns: UnixNano) -> Outcome {
         self.stats.messages += 1;
+        let routed = self.guarded(recv_ns, |router, sink| router.route(msg, recv_ns, sink));
+        self.book(routed, msg)
+    }
 
+    /// Runs a REST body through the router as the start book for
+    /// `instrument`.
+    ///
+    /// Counted under [`Stats::rest`], not `messages`: it did not come off the
+    /// socket, and a reconnect storm that fetched a hundred books should be
+    /// visible as one.
+    pub fn ingest_rest(&mut self, instrument: usize, body: &[u8], recv_ns: UnixNano) -> Outcome {
+        self.stats.rest += 1;
+        let routed = self.guarded(recv_ns, |router, sink| router.route_rest(instrument, body, recv_ns, sink));
+        self.book(routed, body)
+    }
+
+    /// Runs `route` against the guarded sink.
+    fn guarded(
+        &mut self,
+        recv_ns: UnixNano,
+        route: impl FnOnce(&mut R, &mut StaleGuard<'_, S>) -> Result<usize, CryptoError>,
+    ) -> Result<usize, CryptoError> {
         let mut stale = 0u64;
         let routed = {
             let mut guard = StaleGuard {
@@ -139,23 +266,38 @@ impl<R: Router, S: RecordSink> Pipeline<R, S> {
                 stale_ns: self.stale_ns,
                 stale: &mut stale,
             };
-            self.router.route(msg, recv_ns, &mut guard)
+            route(&mut self.router, &mut guard)
         };
         self.stats.stale += stale;
+        routed
+    }
 
+    /// Books the outcome of a routed message, keeping a refused one.
+    fn book(&mut self, routed: Result<usize, CryptoError>, msg: &[u8]) -> Outcome {
         match routed {
             Ok(records) => {
                 self.stats.published += records as u64;
                 Outcome::Published { records }
             }
-            Err(e) => {
+            Err(error) => {
                 // The slot, if one was claimed, was abandoned: a half-built
                 // record is never what the consumer sees (`CLAUDE.md`).
                 self.stats.decode_failed += 1;
                 self.sink.note_drops(1);
-                Outcome::Failed(e)
+                self.last_failure = Some(Failure::new(error, msg));
+                Outcome::Failed(error)
             }
         }
+    }
+
+    /// The most recent message the router refused, with its head.
+    ///
+    /// For the report: a counter says *that* frames fail, this says *why*,
+    /// and the first few bytes say which stream. Overwritten on each
+    /// failure; taking it clears it, so the binary logs each one once.
+    #[inline]
+    pub fn take_failure(&mut self) -> Option<Failure> {
+        self.last_failure.take()
     }
 
     /// Publishes a liveness record carrying the counters so far.

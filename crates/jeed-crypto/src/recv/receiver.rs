@@ -45,7 +45,7 @@ use crate::recv::link::{
     CLOSE_GOING_AWAY, CLOSE_NORMAL, CLOSE_PROTOCOL_ERROR, Frame, Link, LinkError, LinkOptions, Tls,
     WS_MESSAGE_BUFFER,
 };
-use crate::recv::pipeline::{MAX_KEEPALIVE_LEN, Pipeline, Router};
+use crate::recv::pipeline::{Failure, MAX_KEEPALIVE_LEN, Outcome, Pipeline, Router};
 use crate::recv::stats::Stats;
 use crate::recv::ws::{Assembly, MAX_CONTROL_PAYLOAD, Opcode};
 use jeed_wire::{RecordSink, UnixNano};
@@ -229,6 +229,30 @@ impl<R: Router, S: RecordSink> Receiver<R, S> {
             Ok(()) => Ok(()),
             Err(e) => Err(SendError::Link(self.fail(e))),
         }
+    }
+
+    /// Publishes a REST body as the start book for `instrument` — see
+    /// [`Router::rest_books`].
+    ///
+    /// Goes through the same guarded sink as a socket message, so the age
+    /// check and the counters apply. `recv_ns` is when the body arrived.
+    pub fn ingest_rest(&mut self, instrument: usize, body: &[u8], recv_ns: UnixNano) -> Outcome {
+        self.pipeline.ingest_rest(instrument, body, recv_ns)
+    }
+
+    /// The most recent message the router refused, once — see
+    /// [`Pipeline::take_failure`].
+    #[inline]
+    pub fn take_failure(&mut self) -> Option<Failure> {
+        self.pipeline.take_failure()
+    }
+
+    /// Replaces the URL the next connection attempt dials.
+    ///
+    /// For a venue whose address comes from a ticket ([`Router::ticket`]).
+    /// The current connection, if any, is left alone.
+    pub fn set_endpoint(&mut self, endpoint: Endpoint) {
+        self.endpoint = endpoint;
     }
 
     /// Sends a Close and drops the connection, if there is one.
@@ -490,18 +514,21 @@ fn on_frame<R: Router, S: RecordSink>(
     }
 }
 
-/// Text goes to the router; binary is counted and dropped.
+/// Text and binary both go to the router; binary is counted on the way.
+///
+/// Upbit and Bithumb send their JSON in binary frames, so a loop that dropped
+/// them would be a loop that could not carry two of its eight venues. The
+/// counter stays so a venue that *starts* sending binary is visible.
 fn ingest<R: Router, S: RecordSink>(
     pipeline: &mut Pipeline<R, S>,
     opcode: Opcode,
     bytes: &[u8],
     recv_ns: UnixNano,
 ) {
-    if matches!(opcode, Opcode::Text) {
-        pipeline.ingest(bytes, recv_ns);
-    } else {
+    if matches!(opcode, Opcode::Binary) {
         pipeline.note_binary();
     }
+    pipeline.ingest(bytes, recv_ns);
 }
 
 /// A message could not be sent.

@@ -431,12 +431,13 @@ fn an_unsolicited_pong_is_counted_and_ignored() {
 }
 
 #[test]
-fn a_binary_frame_is_counted_and_not_routed() {
+fn a_binary_frame_is_counted_and_routed_like_text() {
+    // Upbit and Bithumb send their JSON in binary frames.
     let (mut rx, mut peer, _l) = connected(config(), Fake::new());
     peer.frame(true, Opcode::Binary, SPOT_TRADE);
     pump_until(&mut rx, |rx| rx.stats().binary == 1);
-    assert_eq!(rx.stats().messages, 0);
-    assert_eq!(rx.pipeline().sink().len(), 0);
+    assert_eq!(rx.stats().messages, 1);
+    assert_eq!(rx.pipeline().sink().len(), 1);
     assert_eq!(rx.state(), LinkState::Open, "not a protocol error");
 }
 

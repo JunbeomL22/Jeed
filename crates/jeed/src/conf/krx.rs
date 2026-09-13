@@ -29,15 +29,17 @@
 //! standard's table does not list, a trcode this build has no decoder for, a
 //! trcode listed under two feeds.
 
+use crate::conf::rules::{Placement, check_placement};
 use crate::conf::{ConfError, Health, Section, TrCodeTable, read, trcodes::trcode};
-use crate::cpu::{MAX_LOGICAL, Topology, mask_of};
+use crate::cpu::{Topology, mask_of};
 use crate::toml::Table;
 use core::fmt;
 use jeed_krx::TrCode;
 use jeed_krx::decode::dispatch;
 use jeed_krx::recv::{Config, Endpoint, Mode, SocketOptions};
-use jeed_shm::{SegmentName, ShmError};
 use std::path::{Path, PathBuf};
+
+pub use crate::conf::rules::RuleError;
 
 /// The whole file.
 #[derive(Debug, Clone, PartialEq)]
@@ -103,10 +105,22 @@ impl FeedConf {
         }
     }
 
-    /// The affinity mask, or `None` if a core is beyond [`MAX_LOGICAL`].
+    /// The affinity mask, or `None` if a core is beyond
+    /// [`MAX_LOGICAL`](crate::cpu::MAX_LOGICAL).
     #[inline]
     pub fn mask(&self) -> Option<u64> {
         mask_of(&self.cores)
+    }
+
+    /// The part every conf's feed has, for the shared rules.
+    pub fn placement(&self) -> Placement<'_> {
+        Placement {
+            name: &self.name,
+            spin: self.mode == Mode::Spin,
+            cores: &self.cores,
+            ring: &self.ring,
+            ring_slots: self.ring_slots,
+        }
     }
 }
 
@@ -165,54 +179,11 @@ impl KrxConf {
     /// `topology` is the box's SMT layout; without it the sibling rule is
     /// skipped (and [`warnings`](Self::warnings) says so).
     pub fn validate(&self, topology: Option<&Topology>) -> Result<(), RuleError> {
-        if self.feeds.is_empty() {
-            return Err(RuleError::NoFeeds);
-        }
+        let placements: Vec<Placement<'_>> = self.feeds.iter().map(FeedConf::placement).collect();
+        check_placement(&placements, topology)?;
 
         for (i, feed) in self.feeds.iter().enumerate() {
             let name = &feed.name;
-            if name.is_empty() {
-                return Err(RuleError::EmptyName { index: i });
-            }
-            if let Some(other) = self.feeds[..i].iter().find(|f| f.name == *name) {
-                return Err(RuleError::DuplicateName { name: other.name.clone() });
-            }
-
-            SegmentName::local(&feed.ring)
-                .map_err(|source| RuleError::Ring { feed: name.clone(), source })?;
-            if let Some(other) = self.feeds[..i].iter().find(|f| f.ring == feed.ring) {
-                return Err(RuleError::DuplicateRing {
-                    ring: feed.ring.clone(),
-                    a: other.name.clone(),
-                    b: name.clone(),
-                });
-            }
-            if feed.ring_slots == 0 || !feed.ring_slots.is_power_of_two() {
-                return Err(RuleError::RingSlots { feed: name.clone(), slots: feed.ring_slots });
-            }
-
-            if feed.cores.is_empty() {
-                return Err(RuleError::NoCores { feed: name.clone() });
-            }
-            if feed.mode == Mode::Spin && feed.cores.len() != 1 {
-                return Err(RuleError::SpinOnSeveralCores { feed: name.clone(), cores: feed.cores.len() });
-            }
-            let logical = topology.map_or(MAX_LOGICAL, Topology::logical);
-            for &core in &feed.cores {
-                if core as usize >= logical {
-                    return Err(RuleError::CoreOutOfRange { feed: name.clone(), core, logical });
-                }
-                for other in &self.feeds[..i] {
-                    if other.cores.contains(&core) {
-                        return Err(RuleError::CoreShared {
-                            core,
-                            a: other.name.clone(),
-                            b: name.clone(),
-                        });
-                    }
-                }
-            }
-
             if feed.sockets.is_empty() {
                 return Err(RuleError::NoSockets { feed: name.clone() });
             }
@@ -238,30 +209,6 @@ impl KrxConf {
             for (j, &code) in feed.trcodes.iter().enumerate() {
                 if feed.trcodes[..j].contains(&code) {
                     return Err(RuleError::DuplicateTrcode { feed: name.clone(), code });
-                }
-            }
-        }
-
-        // The sibling rule needs every feed's cores, so it runs after the
-        // per-feed pass.
-        if let Some(topology) = topology {
-            for spinning in self.feeds.iter().filter(|f| f.mode == Mode::Spin) {
-                let mask = spinning.mask().expect("cores validated above");
-                let forbidden = topology.siblings_outside(mask);
-                for other in &self.feeds {
-                    if other.name == spinning.name {
-                        continue;
-                    }
-                    let other_mask = other.mask().expect("cores validated above");
-                    if other_mask & forbidden != 0 {
-                        let sibling = (other_mask & forbidden).trailing_zeros() as u16;
-                        return Err(RuleError::SiblingShared {
-                            spinning: spinning.name.clone(),
-                            core: spinning.cores[0],
-                            sibling,
-                            other: other.name.clone(),
-                        });
-                    }
                 }
             }
         }
@@ -337,170 +284,6 @@ fn feed(s: &Section<'_>, name: String) -> Result<FeedConf, ConfError> {
     s.finish(FEED_KEYS)?;
     Ok(FeedConf { name, mode, cores, ring, ring_slots, sockets, trcodes, burst, recv_buffer_bytes })
 }
-
-/// A rule spanning keys or sections was broken — the conf would run wrong.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuleError {
-    /// No `[[feed]]` at all.
-    NoFeeds,
-
-    /// A feed with an empty `name`.
-    EmptyName {
-        /// Position in the file, zero-based.
-        index: usize,
-    },
-
-    /// Two feeds with one `name`.
-    DuplicateName {
-        /// The name.
-        name: String,
-    },
-
-    /// A `ring` the OS would not accept as an object name.
-    Ring {
-        /// Feed.
-        feed: String,
-        /// Why not.
-        source: ShmError,
-    },
-
-    /// Two feeds writing one segment — the ring is single-producer.
-    DuplicateRing {
-        /// The segment.
-        ring: String,
-        /// First feed.
-        a: String,
-        /// Second feed.
-        b: String,
-    },
-
-    /// `ring_slots` is zero or not a power of two.
-    RingSlots {
-        /// Feed.
-        feed: String,
-        /// What was asked.
-        slots: u64,
-    },
-
-    /// `cores` is empty.
-    NoCores {
-        /// Feed.
-        feed: String,
-    },
-
-    /// A spinning feed with more than one core: the thread would migrate,
-    /// and "one pinned core" would be a figure of speech.
-    SpinOnSeveralCores {
-        /// Feed.
-        feed: String,
-        /// How many were listed.
-        cores: usize,
-    },
-
-    /// A core the box does not have.
-    CoreOutOfRange {
-        /// Feed.
-        feed: String,
-        /// The core.
-        core: u16,
-        /// Logical processors on the box.
-        logical: usize,
-    },
-
-    /// One core in two feeds.
-    CoreShared {
-        /// The core.
-        core: u16,
-        /// First feed.
-        a: String,
-        /// Second feed.
-        b: String,
-    },
-
-    /// A feed on the SMT sibling of a spinning feed's core.
-    SiblingShared {
-        /// The spinning feed.
-        spinning: String,
-        /// Its core.
-        core: u16,
-        /// The sibling.
-        sibling: u16,
-        /// The feed that would share the physical core.
-        other: String,
-    },
-
-    /// `sockets` is empty.
-    NoSockets {
-        /// Feed.
-        feed: String,
-    },
-
-    /// One port in two sockets — on Windows both would receive both groups.
-    PortShared {
-        /// The port.
-        port: u16,
-        /// First feed.
-        a: String,
-        /// Second feed.
-        b: String,
-    },
-
-    /// `trcodes` is empty.
-    NoTrcodes {
-        /// Feed.
-        feed: String,
-    },
-
-    /// One trcode twice in one feed.
-    DuplicateTrcode {
-        /// Feed.
-        feed: String,
-        /// The code.
-        code: TrCode,
-    },
-}
-
-impl fmt::Display for RuleError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoFeeds => write!(f, "no [[feed]] section"),
-            Self::EmptyName { index } => write!(f, "feed[{index}]: `name` is empty"),
-            Self::DuplicateName { name } => write!(f, "two feeds are named \"{name}\""),
-            Self::Ring { feed, source } => write!(f, "feed[{feed}]: `ring`: {source}"),
-            Self::DuplicateRing { ring, a, b } => {
-                write!(f, "feeds \"{a}\" and \"{b}\" both write ring \"{ring}\"; a ring has one producer")
-            }
-            Self::RingSlots { feed, slots } => {
-                write!(f, "feed[{feed}]: `ring_slots` = {slots} is not a power of two")
-            }
-            Self::NoCores { feed } => write!(f, "feed[{feed}]: `cores` is empty"),
-            Self::SpinOnSeveralCores { feed, cores } => {
-                write!(f, "feed[{feed}]: a spinning feed pins to exactly one core, not {cores}")
-            }
-            Self::CoreOutOfRange { feed, core, logical } => {
-                write!(f, "feed[{feed}]: core {core} does not exist ({logical} logical processors)")
-            }
-            Self::CoreShared { core, a, b } => {
-                write!(f, "feeds \"{a}\" and \"{b}\" both use core {core}")
-            }
-            Self::SiblingShared { spinning, core, sibling, other } => write!(
-                f,
-                "feed \"{other}\" uses core {sibling}, the SMT sibling of core {core} that \"{spinning}\" spins on"
-            ),
-            Self::NoSockets { feed } => write!(f, "feed[{feed}]: `sockets` is empty"),
-            Self::PortShared { port, a, b } => write!(
-                f,
-                "feeds \"{a}\" and \"{b}\" both listen on port {port}; on Windows each socket would receive both groups"
-            ),
-            Self::NoTrcodes { feed } => write!(f, "feed[{feed}]: `trcodes` is empty"),
-            Self::DuplicateTrcode { feed, code } => {
-                write!(f, "feed[{feed}]: trcode {code} is listed twice")
-            }
-        }
-    }
-}
-
-impl std::error::Error for RuleError {}
 
 /// What might be wrong with a conf that will still run.
 #[derive(Debug, Clone, PartialEq, Eq)]
