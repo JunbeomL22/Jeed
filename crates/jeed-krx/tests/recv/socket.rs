@@ -1,9 +1,13 @@
-//! `jeed_krx::recv::socket` — Winsock.
+//! `jeed_krx::recv::socket` — Winsock and BSD sockets.
 //!
 //! These open real sockets, on an administratively scoped group that goes
 //! nowhere. They check the parts that are ours — the set-up order, the
 //! `WouldBlock` contract, the empty-poller case — not that multicast routing
 //! works on the machine running the tests.
+//!
+//! They are deliberately *not* split by platform: what the caller is promised
+//! is the same on both, and the one place the kernels genuinely differ is the
+//! bind, which [`two_groups_can_share_a_port`] pins down from the outside.
 
 use jeed_krx::recv::{Endpoint, FeedSocket, Poller, SocketOptions};
 use std::net::Ipv4Addr;
@@ -40,12 +44,20 @@ fn the_receive_buffer_is_read_back_because_the_request_can_be_refused() {
 }
 
 #[test]
-fn the_bind_filters_by_port_and_not_by_group() {
+fn two_groups_can_share_a_port() {
+    // The bind is where the two kernels part company, and the reason the
+    // duplicate-port rule exists.
+    //
     // Measured: Windows returns WSAEADDRNOTAVAIL for a bind to the group
-    // address, so the socket binds to INADDR_ANY and two endpoints on one port
-    // would each receive both streams. `Receiver::new` refuses that
-    // configuration; here we only pin down that the bind itself succeeds and
-    // that a second socket on the same port is allowed to exist.
+    // address, so the socket binds to INADDR_ANY and the destination address
+    // takes no part in the demultiplexing — two endpoints on one port would
+    // each receive *both* streams. Linux accepts the group bind, so there each
+    // socket gets only its own group.
+    //
+    // `Receiver::new` refuses two sockets on one port on both platforms: the
+    // stricter of the two rules, so one conf file is valid on either. What is
+    // pinned down here is only what the socket layer itself promises — the
+    // bind succeeds and a second socket on the same port may exist.
     let a = Endpoint::new(Ipv4Addr::new(239, 255, 77, 88), 30_885);
     let b = Endpoint::new(Ipv4Addr::new(239, 255, 77, 89), 30_885);
     let _sa = FeedSocket::join(a, SocketOptions::default()).unwrap();

@@ -19,7 +19,7 @@
 //!
 //! The two modes differ in one place: where the thread waits. [`Mode::Spin`]
 //! never waits — every socket is polled every round and `WouldBlock` is the
-//! normal answer — and costs a core. [`Mode::Block`] parks in `WSAPoll` and
+//! normal answer — and costs a core. [`Mode::Block`] parks in the poll and
 //! costs nothing. Everything after the datagram is identical, which is why
 //! `V1`/`Q2` can arrive on a hot socket and still be treated as cold traffic:
 //! the classification is the consumer's, off the record kind, not a wiring
@@ -51,9 +51,9 @@ use jeed_wire::{RecordSink, UnixNano};
 ///
 /// The longest interface KRX defines is 1387 B (REPO 우선호가) and the feed is
 /// on a 1500 B MTU, so this is the next power of two above anything that can
-/// arrive. A datagram larger than the buffer is truncated and reported as
-/// `WSAEMSGSIZE`, which the loop counts — it cannot be silently half-decoded,
-/// because the length check would reject it.
+/// arrive. A datagram larger than the buffer is truncated — reported as
+/// `WSAEMSGSIZE` on Windows, silently on Linux — and either way it cannot be
+/// half-decoded, because the length check rejects it.
 pub const MAX_DATAGRAM: usize = 2048;
 
 /// Where the receive thread waits.
@@ -64,7 +64,7 @@ pub enum Mode {
     #[default]
     Spin,
 
-    /// Park in `WSAPoll`. ~0 % CPU, and the latency is whatever the OS takes to
+    /// Park in the OS readiness wait. ~0 % CPU, and the latency is whatever it takes to
     /// wake the thread — tens of µs to ms, which is nothing next to a schedule
     /// notice arriving once a session.
     Block,
@@ -90,7 +90,7 @@ pub struct Config {
     pub burst: u32,
 
     /// Socket setup. `nonblocking` is forced on: both modes drain with
-    /// non-blocking reads, and [`Mode::Block`] waits in `WSAPoll` instead.
+    /// non-blocking reads, and [`Mode::Block`] waits in the poll instead.
     pub socket: SocketOptions,
 }
 
@@ -109,7 +109,7 @@ impl Default for Config {
 }
 
 impl Config {
-    /// `WSAPoll` timeout for [`Mode::Block`], in milliseconds.
+    /// Readiness-wait timeout for [`Mode::Block`], in milliseconds.
     ///
     /// It is derived from the heartbeat rather than configured separately
     /// because it *is* the cold feed's tick: a socket with nothing on it wakes
@@ -149,10 +149,12 @@ impl<S: RecordSink> Receiver<S> {
     /// Two things are validated, and one famously cannot be.
     ///
     /// The group must be a multicast address, and **no two endpoints may share
-    /// a port**: a Windows multicast receiver binds to `INADDR_ANY`, so two
-    /// sockets on one port each receive both groups and every message would be
-    /// decoded and published twice (`socket`). A doubled book is not something
-    /// to discover from the ring.
+    /// a port**. That second rule is the stricter of the two platforms': Linux
+    /// binds to the group and would demultiplex them correctly, Windows binds
+    /// to `INADDR_ANY` and both sockets would receive both groups, publishing
+    /// every message twice ([`socket`](crate::recv::socket)). Applying it
+    /// everywhere keeps one conf valid on both, and a doubled book is not
+    /// something to discover from the ring.
     ///
     /// **Which trcodes a socket carries cannot be checked here** — the
     /// assignment of content to ports is a circuit matter the distribution

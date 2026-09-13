@@ -16,7 +16,5 @@ mod pipeline;
 mod sink;
 mod stats;
 
-#[cfg(windows)]
 mod receiver;
-#[cfg(windows)]
 mod socket;

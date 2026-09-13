@@ -37,10 +37,8 @@ pub mod filter;
 /// Filter → decode → publish, with no transport in it.
 pub mod pipeline;
 /// The socket loop.
-#[cfg(windows)]
 pub mod receiver;
-/// Winsock multicast sockets and `WSAPoll`.
-#[cfg(windows)]
+/// Multicast sockets and the readiness wait.
 pub mod socket;
 /// Counters the receive loop keeps.
 pub mod stats;
@@ -48,9 +46,6 @@ pub mod stats;
 pub use endpoint::{Endpoint, EndpointError};
 pub use filter::{IsinFilter, IsinListError, TrCodeFilter, parse_isin_list};
 pub use pipeline::{Outcome, Pipeline};
-pub use stats::{SocketStats, Stats};
-
-#[cfg(windows)]
 pub use receiver::{Config, MAX_DATAGRAM, Mode, Receiver};
-#[cfg(windows)]
 pub use socket::{FeedSocket, NetError, Poller, SocketOptions};
+pub use stats::{SocketStats, Stats};
