@@ -164,7 +164,7 @@ pub fn fill_book(
         );
     }
 
-    // Derivative channels always carry order counts; equity ones do not, which
+    // Derivative channels always carry order counts; 증권 ones do not, which
     // is why this is a payload-level fact and not a per-level one.
     out.with_order_counts();
 

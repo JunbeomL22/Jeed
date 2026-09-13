@@ -1,8 +1,6 @@
 //! `jeed_krx::decode::derivative::trade_quote` — `G7` 파생 체결 + 우선호가.
 
-mod common;
-
-use common::{G7, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
+use crate::common::{G7, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
 use jeed_krx::KrxError;
 use jeed_krx::decode::derivative::trade_quote::{FIVE_DEEP, TEN_DEEP, depth_for};
 use jeed_wire::{Scale, WireKind, WireRecord, header_flags, trade_flags, trade_kind};

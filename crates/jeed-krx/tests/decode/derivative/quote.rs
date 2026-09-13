@@ -1,8 +1,6 @@
 //! `jeed_krx::decode::derivative::quote` — `B6` 파생 우선호가.
 
-mod common;
-
-use common::{B6, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
+use crate::common::{B6, Level, RECV_NS, VENUE_NS, kospi200_book, single_stock_book};
 use jeed_krx::KrxError;
 use jeed_krx::decode::derivative::quote::{FIVE_DEEP, TEN_DEEP, depth_for};
 use jeed_wire::{Scale, Venue, WireKind, WireRecord, header_flags, quote_ext};

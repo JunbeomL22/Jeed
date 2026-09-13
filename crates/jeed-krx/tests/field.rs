@@ -23,7 +23,7 @@ fn the_scale_belongs_to_the_reader_not_the_value() {
     assert_eq!(KRX.derivative_rate.scale(), Some(Scale::S2));
     assert_eq!(KRX.derivative_plain.scale(), Some(Scale::S0));
     assert_eq!(KRX.derivative_risk_free.scale(), Some(Scale::S3));
-    assert_eq!(KRX.equity_price.scale(), Some(Scale::S0));
+    assert_eq!(KRX.securities_price.scale(), Some(Scale::S0));
     assert_eq!(KRX.bond_yield.scale(), Some(Scale::S6));
 }
 
@@ -78,10 +78,10 @@ fn only_spread_quotes_are_negative() {
 }
 
 #[test]
-fn an_equity_price_reads_through_its_own_reader() {
+fn a_securities_price_reads_through_its_own_reader() {
     // Eleven bytes: [sign][unused][9 digits]. The unused byte is a '0', so it
     // simply reads as a leading digit.
-    assert_eq!(field::price(&KRX.equity_price, b"00000074100", 0), Ok(Some(74100)));
+    assert_eq!(field::price(&KRX.securities_price, b"00000074100", 0), Ok(Some(74100)));
 }
 
 #[test]

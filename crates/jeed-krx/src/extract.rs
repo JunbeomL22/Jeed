@@ -60,9 +60,13 @@ pub struct KrxFields {
 
     /// 증권 `[부호][미사용][유효숫자 9]` — 11 B. The unused byte is a `'0'`,
     /// so it reads as a leading zero rather than needing to be skipped.
-    pub equity_price: Extractor,
+    pub securities_price: Extractor,
 
-    /// 채권 가격 — 11 B, same shape as 증권.
+    /// 채권 가격 — 11 B, the same shape 증권 uses.
+    ///
+    /// A separate field rather than an alias so that a call site says which
+    /// market's field it is reading. If the two shapes ever diverge — and the
+    /// standard revises these tables — only one of them moves.
     pub bond_price: Extractor,
 
     /// 채권 수익률 `[부호][정수 5][.][소수 6]` — 13 B.
@@ -74,7 +78,7 @@ pub static KRX: LazyLock<KrxFields> = LazyLock::new(|| KrxFields {
     derivative_rate: signed(6, 2),
     derivative_risk_free: signed(5, 3),
     derivative_plain: signed(9, 0),
-    equity_price: signed(11, 0),
+    securities_price: signed(11, 0),
     bond_price: signed(11, 0),
     bond_yield: signed(6, 6),
 });

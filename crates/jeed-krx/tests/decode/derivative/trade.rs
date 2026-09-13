@@ -1,8 +1,6 @@
 //! `jeed_krx::decode::derivative::trade` — `A3` 파생 체결.
 
-mod common;
-
-use common::{A3, G7, RECV_NS, VENUE_NS, kospi200_book};
+use crate::common::{A3, G7, RECV_NS, VENUE_NS, kospi200_book};
 use jeed_krx::KrxError;
 use jeed_krx::decode::derivative::trade::{DECODER, MESSAGE_LEN, handles};
 use jeed_wire::{Scale, WireKind, WireRecord, header_flags, trade_flags, trade_kind};

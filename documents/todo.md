@@ -762,16 +762,32 @@ fractal-engine 의 `utilities::converters` 를 `crates/jeed-convert` 로 포팅�
 주식선물·주식옵션·상품파생은 점이 없으므로 이 방향이 실제로 열려 있다. jeed 는
 `FixedExtractor::to_i64_checked` 를 추가해 점 자리를 먼저 확인한다.
 
-### 남은 것
+### 디코더 — 끝났다 (2026-09-13)
 
-- [ ] `decode/stock/{quote,trade}` — `B6` 0002 (590B), `A3` 0004 (186B)
-- [ ] `decode/etf/{quote,trade}` — `B7` 0003 (830B, LP잔량 → `level_ext::LP_QUANTITY`,
-      LP보유수량 → `quote_ext::LP_HOLDINGS`), 체결은 주식과 같은 0004
-- [ ] `decode/bond/{quote,trade,trade_quote}` — 0023 (462B) / 0027 (223B) / 0029 (643B).
-      헤더 41B(모양 B), 레벨 78B, 수익률 13B → `level_ext::BOND_YIELD`, 잔량 단위 천원
-- [ ] `decode/schedule` — `M4` 0019 (83B). **시장 공통 전문 하나**라 시장별 모듈 아래가 아니다
-- [ ] `decode/dispatch` — **앞 2자리(데이터구분)로 1차 분기**, 그 다음 상품군으로 시장·단수 결정
-- [ ] 소액채권(0024/0030)·REPO(0025/0031) 는 범위 밖으로 둔다
+```
+decode/
+  common.rs        헤더 3종 중 47B 공통형, BookAccum
+  dispatch.rs      앞 2자리로 1차 분기 → 상품군으로 시장·단수
+  derivative/      quote(B6 0034/0035) trade(A3 0036) trade_quote(G7 0037/0038)
+                   price_limit(V1 0043) dynamic_limit(Q2 0042)
+  securities/      trade(A3 0004) — 주식·ETF 공통 전문 하나
+  stock/           quote(B6 0002) trade(→securities)
+  etf/             quote(B7 0003) trade(→securities)
+  bond/            quote(B6 0023) trade(A3 0027) trade_quote(G7 0029)
+  schedule.rs      M4 0019 — 시장 공통이라 시장 모듈 밖
+```
+
+와이어에 자리가 없어 버린 필드 (§10 에 이어서):
+
+- 증권 체결 `[163:185]` 매도/매수최우선호가가격 — **가격만 있고 잔량이 없다.** 잔량 0 으로
+  레벨을 만들면 "거기 아무것도 없다"가 되는데 전문은 그런 말을 한 적이 없다. B6/B7 을 같이
+  받으므로 버린다.
+- 증권 체결 `[148:163]` LP보유수량 — ETN 재고용, 음수 가능
+- 증권 우선호가 중간가격·중간가호가총잔량, 채권 호가총잔량
+- 채권 체결 거래일자·결제일자·시가/고가/저가 수익률
+
+**아직 안 한 것:** 소액채권(0024/0030)·REPO(0025/0031)·금현물·배출권. 시장 하나를 반만
+디코드하느니 안 하는 게 낫다 — `dispatch::handles` 가 이들을 claim 하지 않는다.
 
 ### 수신부 설계 시 전제
 
