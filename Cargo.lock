@@ -36,6 +36,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jeed"
+version = "0.1.0"
+dependencies = [
+ "jeed-krx",
+ "jeed-shm",
+ "jeed-wire",
+]
+
+[[package]]
 name = "jeed-convert"
 version = "0.1.0"
 dependencies = [
