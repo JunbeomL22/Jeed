@@ -29,7 +29,10 @@ pub const HEADER_LEN: usize = 47;
 const OFF_SEQUENCE: usize = 5;
 const OFF_BOARD: usize = 13;
 const OFF_SESSION: usize = 15;
-const OFF_ISIN: usize = 17;
+/// 종목코드 offset — shape A. Public because the receive loop reads the ISIN
+/// off a datagram it has not decoded yet, to drop unwanted instruments before
+/// claiming a ring slot ([`dispatch::isin_offset`](crate::decode::dispatch::isin_offset)).
+pub const OFF_ISIN: usize = 17;
 const OFF_INDEX: usize = 29;
 const OFF_TIME: usize = 35;
 

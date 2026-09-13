@@ -38,6 +38,8 @@ pub mod payload;
 pub mod record;
 /// Shared-memory segment header (written once by the producer at boot).
 pub mod segment;
+/// Where a finished record goes.
+pub mod sink;
 /// Value types carried on the wire.
 pub mod types;
 
@@ -52,6 +54,7 @@ pub use payload::{
     DynamicPriceLimitPayload, PriceLimitPayload, QuotePayload, TradePayload, TradeQuotePayload, WireLevel, WirePayload,
 };
 pub use record::WireRecord;
+pub use sink::RecordSink;
 pub use segment::{SEGMENT_HEADER_LEN, SEGMENT_MAGIC, SegmentHeader};
 pub use types::{BookPrice, BookQuantity, BookYield, ISIN_LEN, Isin, OrderCount, Scale, UnixNano, Venue};
 

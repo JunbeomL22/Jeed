@@ -51,7 +51,9 @@ pub const HEADER_LEN: usize = 41;
 const OFF_SEQUENCE: usize = 5;
 const OFF_BOARD: usize = 13;
 const OFF_SESSION: usize = 15;
-const OFF_ISIN: usize = 17;
+/// 종목코드 offset — shape B. Same place as shape A even though the header is
+/// six bytes shorter; the 정보분배종목인덱스 that 채권 lacks sits *after* it.
+pub const OFF_ISIN: usize = 17;
 const OFF_TIME: usize = 29;
 
 /// Both 채권 우선호가 forms carry five levels a side.

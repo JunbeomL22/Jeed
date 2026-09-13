@@ -57,7 +57,9 @@ pub const LIMIT_HEADER_LEN: usize = 33;
 // Shape C offsets.
 const LIM_SEQUENCE: usize = 5;
 const LIM_BOARD: usize = 13;
-const LIM_ISIN: usize = 15;
+/// 종목코드 offset — shape C. Two bytes earlier than shape A, because `V1`/`Q2`
+/// carry no 세션ID.
+pub const LIM_ISIN: usize = 15;
 const LIM_INDEX: usize = 27;
 
 /// Book depth of a derivative product group.

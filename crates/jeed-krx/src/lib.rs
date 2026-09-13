@@ -44,6 +44,8 @@ pub mod extract;
 pub mod field;
 /// The frame check that runs before any field is read.
 pub mod message;
+/// 수신부 — UDP multicast in, one ring out.
+pub mod recv;
 /// The five-byte message type code.
 pub mod trcode;
 

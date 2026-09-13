@@ -7,8 +7,8 @@ use crate::ring::{SEQ_IN_PROGRESS, seq_cell, slot_offset};
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{Ordering, fence};
 use jeed_wire::{
-    SEGMENT_HEADER_LEN, SEGMENT_MAGIC, SegmentHeader, WIRE_FORMAT_VERSION, WIRE_RECORD_LEN,
-    WireRecord,
+    RecordSink, SEGMENT_HEADER_LEN, SEGMENT_MAGIC, SegmentHeader, WIRE_FORMAT_VERSION,
+    WIRE_RECORD_LEN, WireRecord,
 };
 
 /// Single producer for one segment.
@@ -156,6 +156,31 @@ impl RingProducer {
         let mut slot = self.slot();
         *slot = *rec;
         slot.commit()
+    }
+}
+
+/// The ring is the live sink. A handler generic over
+/// [`RecordSink`] therefore names neither this crate nor Windows
+/// (`jeed_wire::sink`).
+impl RecordSink for RingProducer {
+    /// Decodes straight into the slot: `fill` writes into shared memory with no
+    /// staging copy, and an `Err` drops the [`Slot`] without committing, so the
+    /// sequence stays at the in-progress sentinel and the write cursor does not
+    /// move.
+    #[inline]
+    fn publish<E>(
+        &mut self,
+        fill: impl FnOnce(&mut WireRecord) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let mut slot = self.slot();
+        fill(&mut slot)?;
+        slot.commit();
+        Ok(())
+    }
+
+    #[inline]
+    fn note_drops(&mut self, n: u64) {
+        RingProducer::note_drops(self, n);
     }
 }
 

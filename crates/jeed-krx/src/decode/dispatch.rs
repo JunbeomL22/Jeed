@@ -22,7 +22,7 @@
 //! code that does not exist is a corrupt datagram. The receive loop counts them
 //! separately from decode failures.
 
-use crate::decode::{bond, derivative, etf, schedule, securities, stock};
+use crate::decode::{bond, common, derivative, etf, schedule, securities, stock};
 use crate::error::KrxError;
 use crate::trcode::TrCode;
 use jeed_wire::{UnixNano, WireRecord};
@@ -160,6 +160,33 @@ pub const fn message_len(trcode: TrCode) -> Option<usize> {
         _ => return None,
     })
 }
+
+/// Where the 종목코드 sits in a datagram of this trcode, if it has one.
+///
+/// The receive loop uses it to apply the ISIN allow-set **before** it claims a
+/// ring slot: an options product-group port carries every strike, and decoding
+/// a strike nobody trades only to throw it away is the one filter cost that is
+/// avoidable.
+///
+/// `None` means *the allow-set does not apply*, not *no instrument*. `M4`
+/// carries a 종목코드 but its subject is the board — a market-wide halt names
+/// no instrument, and filtering the schedule channel by instrument would drop
+/// exactly the message that matters most.
+pub const fn isin_offset(trcode: TrCode) -> Option<usize> {
+    match trcode.data_class() {
+        // Shapes A and B put it in the same place; the assertion below is the
+        // reason this can be one arm.
+        [b'B', b'6'] | [b'B', b'7'] | [b'A', b'3'] | [b'G', b'7'] => Some(common::OFF_ISIN),
+        [b'V', b'1'] | [b'Q', b'2'] => Some(derivative::LIM_ISIN),
+        _ => None,
+    }
+}
+
+// 채권 drops 정보분배종목인덱스 from the header, but from *behind* the
+// 종목코드 — so the offset survives and `isin_offset` needs no market branch.
+// If a standard revision ever moves one of them, this fails the build rather
+// than filtering on six bytes of 종목코드 and six of something else.
+const _: () = assert!(bond::OFF_ISIN == common::OFF_ISIN);
 
 /// `true` if this build decodes the trcode.
 ///

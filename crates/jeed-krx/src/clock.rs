@@ -7,6 +7,30 @@
 
 use crate::field::NS_PER_DAY;
 use jeed_wire::UnixNano;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Wall-clock nanoseconds since the Unix epoch.
+///
+/// **The one sanctioned `std::time` site in this crate.** Everywhere else takes
+/// the reading as an argument, because the reading has to happen next to the
+/// `recv` that justifies it — a timestamp taken three branches later is a
+/// measurement of this code, not of the feed.
+///
+/// It is `SystemTime`, and therefore **not monotonic**: it steps when the
+/// system clock is disciplined. Ordering authority is `producer_seq`;
+/// `recv_ns` is for measurement and labelling only, and every difference taken
+/// against it is `saturating_sub` (`documents/feed_handler.md` §6).
+///
+/// A clock before the epoch reads as `0` rather than panicking. A feed handler
+/// that dies because the clock is wrong is worse than one that labels a record
+/// with a zero.
+#[inline]
+pub fn now_ns() -> UnixNano {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => d.as_nanos() as UnixNano,
+        Err(_) => 0,
+    }
+}
 
 /// KRX publishes in KST, which has no daylight saving and has been UTC+9 for
 /// the whole life of the exchange's electronic feeds.

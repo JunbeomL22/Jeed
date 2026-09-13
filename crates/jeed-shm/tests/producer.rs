@@ -5,8 +5,8 @@ mod common;
 use common::unique;
 use jeed_shm::{RingProducer, ShmError, segment_len};
 use jeed_wire::{
-    RecordHeader, SEGMENT_MAGIC, Scale, TradePayload, Venue, WIRE_FORMAT_VERSION, WIRE_RECORD_LEN,
-    WireKind, WireRecord,
+    RecordHeader, RecordSink, SEGMENT_MAGIC, Scale, TradePayload, Venue, WIRE_FORMAT_VERSION,
+    WIRE_RECORD_LEN, WireKind, WireRecord,
 };
 
 fn trade(price: i64) -> WireRecord {
@@ -164,4 +164,59 @@ fn a_producer_can_be_moved_onto_a_pinned_thread() {
     let mut p = RingProducer::create(&name, 8, 1).unwrap();
     let seq = std::thread::spawn(move || p.push(&trade(1))).join().unwrap();
     assert_eq!(seq, 0);
+}
+
+// ── RecordSink ──────────────────────────────────────────────────────────────
+
+#[test]
+fn publishing_through_the_sink_commits_the_slot() {
+    // The handlers never name this crate: they are generic over `RecordSink`,
+    // and the ring is what that resolves to in the binary.
+    let name = unique("sink.ok");
+    let mut p = RingProducer::create(&name, 8, 1).unwrap();
+
+    let out: Result<(), ()> = p.publish(|rec| {
+        *rec = trade(93_700);
+        Ok(())
+    });
+
+    assert_eq!(out, Ok(()));
+    assert_eq!(p.next_seq(), 1);
+    assert_eq!(p.header().write_cursor(), 1);
+}
+
+#[test]
+fn a_fill_that_fails_publishes_nothing_and_reuses_the_slot() {
+    // The decode-failure path: the slot is claimed, half written, abandoned.
+    // The cursor must not move and the sentinel must stay, or a consumer reads
+    // a half-record wearing the previous lap's sequence.
+    let name = unique("sink.err");
+    let mut p = RingProducer::create(&name, 8, 1).unwrap();
+
+    let out: Result<(), &str> = p.publish(|rec| {
+        *rec = trade(93_700);
+        Err("decoder gave up")
+    });
+
+    assert_eq!(out, Err("decoder gave up"));
+    assert_eq!(p.next_seq(), 0, "the sequence was not consumed");
+    assert_eq!(p.header().write_cursor(), 0, "nothing was published");
+
+    // The same slot comes back, and publishing through it now works.
+    let out: Result<(), ()> = p.publish(|rec| {
+        *rec = trade(93_800);
+        Ok(())
+    });
+    assert_eq!(out, Ok(()));
+    assert_eq!(p.header().write_cursor(), 1);
+}
+
+#[test]
+fn the_sink_reports_drops_to_the_segment() {
+    let name = unique("sink.drops");
+    let mut p = RingProducer::create(&name, 8, 1).unwrap();
+
+    RecordSink::note_drops(&mut p, 2);
+    RecordSink::note_drops(&mut p, 3);
+    assert_eq!(p.drops(), 5);
 }
