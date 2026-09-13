@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/jeed-wire", "crates/jeed-convert", "crates/jeed-shm", "crates/jeed-krx"]
+members = [
+    "crates/jeed-wire",
+    "crates/jeed-convert",
+    "crates/jeed-shm",
+    "crates/jeed-krx",
+    "crates/jeed-fix",
+]
 
 [workspace.package]
 edition = "2024"

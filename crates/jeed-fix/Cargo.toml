@@ -1,0 +1,19 @@
+[package]
+name = "jeed-fix"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "FIX 4.4 market-data protocol layer — framing, tag-value, 35=W/X, session"
+
+[dependencies]
+# Only for `Scale` and `UnixNano`, which are wire header fields rather than
+# general-purpose types (`documents/todo.md` §2 — no `jeed-types` crate).
+# **No `jeed-shm`**, for the same reason `jeed-krx` has none: a decoder bug
+# must not be able to reach the segment.
+jeed-wire = { path = "../jeed-wire" }
+
+[dev-dependencies]
+# Tests name `Scale` when they build a `FixScales`.
+jeed-wire = { path = "../jeed-wire" }
