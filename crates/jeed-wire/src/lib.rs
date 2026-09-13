@@ -68,6 +68,8 @@ pub use types::{
 /// Bumping this is a **both-binaries-at-once deployment event**, not a
 /// refactor. Until a consumer is attached the layout is still free to move.
 ///
+/// - **4** — `Venue` gained Bitget, Gate and the two KuCoin markets. No
+///   layout change, for the reason version 3 gives.
 /// - **3** — `Venue` gained Upbit, Bithumb, OKX and the two Bybit markets.
 ///   No layout change: a venue byte the consumer does not know is already a
 ///   rejected record ([`Venue::from_u8`]), so the bump is what tells it to
@@ -79,7 +81,7 @@ pub use types::{
 ///   padding. Done in one bump, while no consumer is attached, because the
 ///   next one will not be free.
 /// - **1** — KRX and FIX only.
-pub const WIRE_FORMAT_VERSION: u32 = 3;
+pub const WIRE_FORMAT_VERSION: u32 = 4;
 
 /// Maximum book depth carried per side.
 ///

@@ -138,6 +138,35 @@ pub enum Venue {
     /// as it spells the spot pair, and only the endpoint tells them apart.
     /// Inverse contracts, when they arrive, take a third byte.
     BybitLinear = 9,
+
+    /// Bitget spot.
+    BitgetSpot = 10,
+
+    /// Bitget USDT/USDC-margined futures (`USDT-FUTURES`, `USDC-FUTURES`).
+    ///
+    /// The Bybit case again: `BTCUSDT` is the spot pair and the perpetual, and
+    /// only the subscription's `instType` says which. Coin-margined
+    /// (`COIN-FUTURES`) takes a third byte when it arrives.
+    BitgetLinear = 11,
+
+    /// Gate.io spot.
+    ///
+    /// Named for the market rather than the venue because Gate's perpetuals
+    /// spell the contract exactly as spot spells the pair (`BTC_USDT`), so the
+    /// second market cannot share this byte when it is ported.
+    GateSpot = 12,
+
+    /// KuCoin spot.
+    KucoinSpot = 13,
+
+    /// KuCoin futures.
+    ///
+    /// Split from [`KucoinSpot`](Self::KucoinSpot) even though today's symbols
+    /// cannot collide — futures renames the asset and suffixes the contract
+    /// (`XBTUSDTM` against spot's `BTC-USDT`). That is a naming habit, not a
+    /// rule KuCoin documents, and the cost of being wrong about it is two
+    /// order books merged into one.
+    KucoinFutures = 14,
 }
 
 impl Venue {
@@ -155,6 +184,11 @@ impl Venue {
             Self::Okx => "OKX",
             Self::BybitSpot => "BYBIT_SPOT",
             Self::BybitLinear => "BYBIT_LINEAR",
+            Self::BitgetSpot => "BITGET_SPOT",
+            Self::BitgetLinear => "BITGET_LINEAR",
+            Self::GateSpot => "GATE_SPOT",
+            Self::KucoinSpot => "KUCOIN_SPOT",
+            Self::KucoinFutures => "KUCOIN_FUTURES",
         }
     }
 
@@ -178,6 +212,11 @@ impl Venue {
             7 => Some(Self::Okx),
             8 => Some(Self::BybitSpot),
             9 => Some(Self::BybitLinear),
+            10 => Some(Self::BitgetSpot),
+            11 => Some(Self::BitgetLinear),
+            12 => Some(Self::GateSpot),
+            13 => Some(Self::KucoinSpot),
+            14 => Some(Self::KucoinFutures),
             _ => None,
         }
     }
@@ -196,6 +235,11 @@ impl Venue {
             "OKX" => Some(Self::Okx),
             "BYBIT_SPOT" => Some(Self::BybitSpot),
             "BYBIT_LINEAR" => Some(Self::BybitLinear),
+            "BITGET_SPOT" => Some(Self::BitgetSpot),
+            "BITGET_LINEAR" => Some(Self::BitgetLinear),
+            "GATE_SPOT" => Some(Self::GateSpot),
+            "KUCOIN_SPOT" => Some(Self::KucoinSpot),
+            "KUCOIN_FUTURES" => Some(Self::KucoinFutures),
             _ => None,
         }
     }
