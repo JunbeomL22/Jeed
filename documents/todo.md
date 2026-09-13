@@ -38,14 +38,16 @@ jeed/
    ├─ jeed-shm/          named mapping(Win32) / shm_open(POSIX) + SPSC 링 (producer/consumer)
    ├─ jeed-krx/          UDP 수신 + 전문 디코더 → WireRecord
    ├─ jeed-fix/          FIX 프로토콜 → MdMessage → WireRecord
-   └─ jeed/              바이너리 2개 (krx, fix)
+   ├─ jeed-crypto/       크립토 WebSocket JSON → WireRecord
+   └─ jeed/              바이너리 (krx, fix, …)
 ```
 
 ```
 jeed-wire ←── jeed-shm ←──┬── jeed (bin)
     ↑                     │
     ├── jeed-krx ─────────┤
-    └── jeed-fix ─────────┘
+    ├── jeed-fix ─────────┤
+    └── jeed-crypto ──────┘
     ↑
     └──────────────────── 소비자(fractal-engine) 는 jeed-wire + jeed-shm 만
 ```
@@ -55,7 +57,9 @@ OMS 를 재배포해야 하고, 그러면 프로세스를 나눈 이유가 없�
 것은 **양쪽 바이너리 동시 배포 이벤트**이므로 그 사건이 한 크레이트의 커밋 로그에만 찍혀야 한다.
 backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코드가 필요 없다.
 
-- `Venue` / `Isin` / `Scale` 은 **헤더 필드 자체**라 `jeed-wire` 에 둔다. `jeed-types` 를 따로 만들지 않는다.
+- `Venue` / `Symbol` / `Scale` 은 **헤더 필드 자체**라 `jeed-wire` 에 둔다. `jeed-types` 를 따로 만들지 않는다.
+  KRX 의 `Isin`(12B)은 반대로 `jeed-krx` 쪽이다 — 전문 레이아웃의 폭이지 와이어의 폭이 아니라서,
+  섞어 두면 크립토 심볼이 길어질 때마다 KRX 오프셋이 움직인다.
 - KRX 의 ASCII 고정폭 extractor 는 `jeed-krx` 안에 둔다. FIX 는 tag-value 라 안 쓴다 —
   공용으로 빼면 소비자가 하나뿐인 크레이트가 생긴다.
 - `jeed-shm` 분리 이유: unsafe 와 OS API 가 여기만 모인다. 그리고 wire 는 파일·parquet
@@ -78,6 +82,13 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
 | `src/data/receiver/krx_udp.rs` | `jeed-krx` | 재작성 (§5) |
 | `src/utilities/converters/extractor/**` | `jeed-krx` | `EXTRACTOR_CONTAINER` — 디코더가 필드 폭·스케일을 여기서 얻음 |
 | `src/data/fix/{frame,tagvalue,market_data,session,error}.rs` | `jeed-fix` | 그대로 |
+| `src/data/exchanges/binance/json.rs` | `jeed-crypto/src/json.rs` | 스캐너는 그대로, 레벨 파서만 고정배열로 |
+| `src/data/exchanges/binance/decode/**` | `jeed-crypto/src/binance/` | 출력 타입 교체 + 디코더당 struct → `Instrument` + 자유함수 |
+| `src/data/receiver/crypto.rs` | 보류 | WS 수신부. tungstenite 를 들일지 별도 결정 |
+| `src/data/exchanges/{upbit,bithumb,okx,bybit}/decode/**` | `jeed-crypto/{upbit,bithumb,okx,bybit}/` | 완료. 시퀀스 추적(`last_seq_id`)은 안 가져왔다 — 핸들러는 무상태 |
+| `src/data/exchanges/{bitget,gate,htx,kraken,kucoin}/decode/**` | `jeed-crypto/` | 남음. 다섯 개 다 `{snapshot,delta,trade}.rs` 구조, bitget·kraken 만 `checksum.rs` 가 따로 |
+| `src/data/exchanges/*/encode/**` | **안 가져옴** | 주문 |
+| `src/data/recovery/**` | **안 가져옴** | 델타 복구는 북을 가진 소비자 몫 |
 | `src/data/exchanges/smbs/**` | 보류 | 베뉴 방언, 실물 확인 후 |
 | `src/data/exchanges/krx/fep/**` | **안 가져옴** | 주문 |
 
@@ -364,7 +375,51 @@ spin 이냐 block 이냐가 실제 동작이다.
       commit 없이 떨구므로 "부분 갱신 금지" 가 규율이 아니라 타입이 된다.
       필터 순서는 trcode → 길이 → ISIN → 슬롯: 뒤로 갈수록 비싸다.
       `STALE` 판정은 디코더가 아니라 여기서 한다 (§8 — 근거가 아니라 결론을 싣는다)
-- [ ] **`jeed-fix`** — 프로토콜 층 그대로. 베뉴 어댑터 없이 `MdMessage` 까지
+- [x] **`jeed-fix`** (2026-09-13, `crates/jeed-fix`) — 프로토콜 층 그대로. 베뉴 어댑터 없이
+      `MdMessage` 까지. `{error,frame,tagvalue,market_data,session}.rs` + 테스트 50 건
+      (`tests/fix/`, CLAUDE.md 의 트리 테스트 규칙대로 `main.rs` 루트).
+      **정말로 "그대로" 였다** — 고친 것은 `crate::types::UnixNano` /
+      `crate::utilities::converters::Scale` → `jeed_wire` 두 줄과 문서 링크뿐이다.
+      베뉴를 모르는 코드라 `AliasMap`·`InstrumentId` 의존이 애초에 없었고, KRX 처럼
+      "출력 타입 교체"(§4)를 할 일도 없다. 출구가 `WireRecord` 가 아니라 `MdMessage` 라서.
+      `jeed-krx` 와 달리 `VENUE` 상수가 없다 — FIX 는 프로토콜이지 장소가 아니다.
+      실캡처 `E:/Data/smbs_fix_db/20260202` 57,221 건(W 42,725 · X 12,457 · HB 2,039)
+      offset·len·34·35·272/273 전부 일치, 시퀀스 갭 0, 한쪽만 있는 개장 북 1 건 그대로 살아남음.
+      와이어 레코드 대조는 어댑터가 생길 때 같이 온다 (§10 미해결)
+- [x] **`jeed-fix` 수신부** (2026-09-13, `crates/jeed-fix/src/recv/`) — TCP 세션, 로그온,
+      침묵 감시, 재접속. 테스트 55 건(`tests/recv/`, 루프백 리스너 위에서 실제로 돈다).
+      세 가지가 `jeed-krx` 와 다르고, 셋 다 §10 의 "성격이 정반대다" 가 코드로 나온 것이다:
+  - **보내야 받는다.** 멀티캐스트는 가입만 하면 오지만 FIX 는 우리 `35=A` 전에는
+        한 바이트도 안 온다. 그래서 `recv/emit.rs`(Logon·Heartbeat·TestRequest·
+        ResendRequest·SequenceReset·Logout·MarketDataRequest)가 생겼고 KRX 엔 대응물이 없다.
+        무할당·시계 안 읽음 — `now` 를 인자로 받고 호출자 버퍼에 쓴다.
+  - **대화 논리는 소켓 밖에 둔다.** `Pipeline::ingest` 가 `Reply` 를 **돌려주고** 루프가
+        쓴다. 덕분에 세션 프로토콜 전체가 상대 없이 테스트된다. 답이 둘 겹칠 때
+        (갭 난 `TestRequest`) 순서는 Logout → ResendRequest → 나머지: 안 답한
+        TestRequest 는 다시 오지만 안 물은 재전송은 안 온다.
+  - **끊기면 다시 건다.** 멀티캐스트엔 없는 개념이다. `reconnect_ns` 는 지수 백오프가
+        **아니다** — 거래소는 정해진 시각에 돌아오는데 그때쯤 백오프가 분 단위면 개장을 놓친다.
+      **`unsafe` 가 없고 `#[cfg(windows)]` 도 없다.** `jeed-krx` 가 Winsock 9 개를 직접 선언한
+      이유(인터페이스 지정 `IP_ADD_MEMBERSHIP`, `SO_RCVBUF` 되읽기, 다중 소켓 `WSAPoll`)가
+      TCP 클라이언트 하나엔 전부 해당 없다. `std::net::TcpStream` 이면 되고, 그래서 테스트가
+      루프백 위에서 실제로 돈다.
+      **`MdAdapter` 가 베뉴가 붙는 자리다.** KRX 는 전문이 종목과 단위를 말해주지만 FIX 는
+      아니다 — `Symbol`→`(venue,isin)`, 없는 `271` 의 의미, 북을 움직이는 `35=X` 를 거부할지가
+      전부 베뉴 지식이다. `venue()`/`scales()`/`adapt()` 세 개고, 두 번째 FIX 베뉴가 바꾸는
+      유일한 것이다. `STALE` 은 어댑터가 아니라 파이프라인이 씌운다(§8) — 어댑터가 잊을 수
+      있는 정책은 정책이 아니라서, 어댑터에 넘기는 싱크가 나이 검사를 통과시키는 래퍼다.
+- [x] **`jeed-fix` 리눅스 확인** (2026-09-13) — WSL(cargo 1.97.1)에서 106 건 전부 통과,
+      clippy 경고 0. **`jeed-krx`·`jeed-shm` 처럼 `posix.rs`/`windows.rs` 로 가를 게 없었다** —
+      `recv/link.rs` 가 처음부터 `std::net::TcpStream` 이라 `unsafe` 도 `#[cfg]` 도 없다.
+      실제로 고친 건 **실캡처 경로 하나**뿐이다: 같은 드라이브가 Windows 엔 `E:/Data`,
+      WSL 엔 `/mnt/e/Data` 라서 둘을 순서대로 본다. `cfg` 는 필요 없다 — 이 플랫폼이 아닌
+      경로는 그냥 존재하지 않고 `is_file` 이 그렇게 답한다. `JEED_SMBS_CAPTURE` 로 덮어쓴다.
+      리눅스에서도 `/mnt/e/.../20260202` 57,221 건 그대로 대조 통과.
+- [x] **`jeed-fix` 와이어 v2 대응** (2026-09-13) — `Isin`(12B, 공백 패딩) →
+      `Symbol`(24B, `NUL` 패딩). 어댑터의 "심볼을 ISIN 열두 바이트에 왼쪽 정렬로 욱여넣는다"
+      가 **사라졌다** — 헤더가 이제 베뉴 고유 이름을 그대로 싣는다. FIX 베뉴엔 애초에 ISIN 이
+      없었으니 v2 가 없애준 건 우리 쪽 군더더기다. 24B 를 넘는 심볼은 자르지 않고 어댑터가
+      거부한다(잘라내면 다른 종목이 된다)
 - [x] **`jeed-krx`·`jeed-shm` 리눅스 포팅** (2026-09-13) — WSL(cargo 1.97.1)에서 전부 통과,
       clippy 경고 0. Windows 도 그대로 통과한다(양쪽 다 돌렸다). `unsafe extern` 이 모인 두
       곳만 `windows.rs`/`posix.rs` 로 갈랐다 — `jeed-shm/src/mapping/` 과
@@ -385,7 +440,79 @@ spin 이냐 block 이냐가 실제 동작이다.
       그리고 리눅스는 버퍼보다 큰 데이터그램을 **에러 없이 잘라서** 준다(`WSAEMSGSIZE` 상당이
       없다) — 잘린 전문은 길이 검사에 걸려 거부되므로 반쯤 디코드될 일은 없고, 소켓 에러가
       아니라 길이 불일치로 세어진다.
-- [ ] **`jeed` 바이너리** — conf 로딩, 코어 핀, 세그먼트 생성, 소켓 가입, 기동 검증
+- [x] **`jeed-wire` v2 — 크립토를 받기 위한 ABI 확장** (2026-09-13). 소비자 미부착일 때
+      한 번에 몰아서 했다. 다음 번은 공짜가 아니다.
+  - 헤더 식별자 `isin: [u8;12]` → `symbol: [u8;24]`. 12바이트로는 크립토 심볼이 안 들어간다
+      (`1000000MOGUSDT` 14, OKX 옵션 22). 헤더 48→64B 지만 **레코드는 640B 그대로** —
+      꼬리 패딩 48→32 로 흡수. `jeed-krx` 는 `field::{ISIN_LEN, Isin, wire_symbol}` 로
+      12바이트 개념을 자기 쪽에 갖는다 (전문 필드 폭은 KRX 상수지 와이어 상수가 아니다)
+  - `Venue` 에 `BinanceSpot = 3` / `BinanceFutures = 4`. **스팟·선물을 한 베뉴로 묶으면
+      `BTCUSDT` 가 식별자 충돌을 일으켜 소비자가 두 북을 합친다**
+  - `WireKind::SnapshotDelta` 예약 해제 → `SnapshotDeltaPayload` 544B 정의.
+      16B 델타 레벨 × **32단(양쪽 공유)** + 갱신ID 3개 + 카운트. 공유로 둔 이유는 한 메시지가
+      보통 한쪽으로 쏠리기 때문(20:2 는 평범, 16:16 고정이면 거절된다)
+  - `jeed-convert` 에 `ParseErr::Precision` + `DynamicExtractor::to_i64_exact`/`to_u64_exact`.
+      기존 `to_i64` 는 조용히 자른다 — 고정폭 KRX 필드엔 맞고 크립토엔 틀리다 (CLAUDE.md)
+- [x] **`jeed-crypto` — binance** (2026-09-13, `crates/jeed-crypto/`) — spot·USD-M 각각
+      bbo / trade / snapshot / delta 8개 디코더. 테스트 74건, clippy·rustdoc 무경고.
+      **디코더당 struct 8개가 아니라 `Instrument` 하나 + 자유함수 8개다** — fractal-engine 은
+      디코더마다 `instrument_id` + extractor 2개를 복사해 들고 있었는데, 갈리는 건 스트림별
+      파싱뿐이라 상태를 한 곳으로 모았다. 스케일은 `exchangeInfo` 에서 오는 **설정**이다
+      (KRX 처럼 표준서가 정해주지 않는다).
+      가져온 것: `json.rs` 스캐너(첫 바이트 키 디스패치 그대로), 8개 디코더의 필드 해석.
+      바꾼 것: 출력 타입(`SnapshotData`/`BboData`/`TradeData` → `WireRecord`),
+      `Vec` 레벨 → 고정 배열, `to_i64` → `to_i64_exact`, `#[inline(always)]` → `#[inline]`,
+      `s` 심볼 대조 추가(원본엔 없었다 — 배선 사고가 조용히 통과한다).
+      **안 가져온 것: `SnapshotCutoff`** (와이어가 10단으로 자르므로 BasisPoint 컷오프는
+      소비자 정책), **`recovery/`** (북을 가진 쪽만 리싱크할 수 있다)
+- [x] **`jeed-wire` v3 — 베뉴 다섯 개** (2026-09-13). 레이아웃은 안 움직였다.
+      `Upbit = 5` · `Bithumb = 6` · `Okx = 7` · `BybitSpot = 8` · `BybitLinear = 9`.
+      **모듈 수와 베뉴 수는 다른 질문이다** — OKX 는 `instId` 가 이미 시장을 가르므로
+      바이트 하나, 바이비트는 `BTCUSDT` 가 스팟·리니어에서 충돌하므로 전문이 같은데도 둘.
+      소비자가 모르는 베뉴 바이트는 이미 거부되는 레코드라(`Venue::from_u8`), 버전을 올리는
+      건 "이제 거부하지 말라" 는 신호다
+- [x] **`jeed-crypto` — upbit · bithumb · okx · bybit** (2026-09-13). 테스트 67건 추가
+      (crypto 141건), clippy·rustdoc 무경고.
+  - **`json.rs` 가 두 배로 늘었다.** 첫 바이트 키 디스패치는 바이낸스 전문의 성질이지
+      JSON 의 성질이 아니다 — 업비트 `ask_price`/`ask_size`, 바이비트 `topic`/`type`/`ts`,
+      OKX `arg`/`action` 이 겹친다. `next_field`(키 전체) · `parse_scalar_bytes`(따옴표
+      있든 없든) · `parse_scalar_u64` · `object_at`/`objects_at`(봉투를 부분 슬라이스로) 추가
+  - **따옴표 친 정수에 `parse_u64` 를 쓰면 조용히 깨진다.** 닫는 따옴표에서 멈추고 다음
+      스캔이 그걸 키의 여는 따옴표로 읽는다. OKX 는 한 객체에서 `ts` 만 따옴표를 친다.
+      이걸 `tests/json.rs` 에 함정 째로 박아 뒀다
+  - **체결 배치는 반복자로 낸다** (OKX·바이비트). fractal-engine 은 마지막 것만 남겼다 —
+      나머지 체결도 시장을 움직였다. `trades(payload)` → `decode_next(inst, recv, out)`
+  - **한 구독이 두 kind 를 낸다** (OKX `action`, 바이비트 `type`). 바이비트는 `u == 1` 이면
+      `type` 이 뭐든 전체 교체다(서비스 재시작). 모르는 값은 `CryptoError::Unexpected`
+  - **fractal-engine OKX 델타의 사슬이 뒤집혀 있었다** — `first_update_id = seqId`,
+      `final_update_id = prevSeqId`. 여기선 `first = final = seqId`, `prev = prevSeqId`
+      (`pu` 와 같은 슬롯). 둘 다 채워져 있어 아래에서 아무도 불평하지 않았을 것이다
+  - **빗썸은 업비트 디코더를 재수출한다.** v2 공개 WS 가 필드까지 같다. 다른 건 베뉴
+      바이트뿐이고 그건 `Instrument` 가 정한다
+  - **업비트 시퀀스는 지어내지 않는다.** fractal-engine 은 ms 타임스탬프를 `sequence_id`
+      자리에 넣었다 — 같은 ms 의 두 북이 같은 북으로 보인다. `quote_ext` 는 `NONE`
+  - **안 가져온 것:** OKX `checksum`(북 없는 쪽이 검증 못 하고, 계산 규칙이 OKX 전용이라
+      소비자가 `venue` 로 분기해야 읽힌다 — 패딩에 언제든 넣을 수 있다), OKX 레벨의
+      주문 건수(`WireDeltaLevel` 에 자리가 없어 스냅샷만 맞고 첫 델타부터 틀려진다),
+      바이비트 `seq`(교차 스트림 순서라 자리가 없다), 상태 추적 `last_seq_id`/`prev_seq`
+      (갭 탐지는 북을 가진 소비자 몫), `SnapshotCutoff`, `recovery/`, `encode/`
+- [ ] **`jeed-crypto` — 나머지 거래소** (bitget · gate · htx · kraken · kucoin). 다섯 개 다
+      `{snapshot,delta,trade}.rs` 구조라 붙을 자리는 이미 있다. 붙이기 전에 정할 것 셋:
+  - **베뉴 바이트를 몇 개 쓰는가.** 모듈 수와 다른 질문이다(CLAUDE.md 의 표) — 전문이 갈리면 모듈,
+        `(venue, symbol)` 이 충돌하면 베뉴다. kucoin 은 spot/futures 가 `json.rs` 부터
+        갈려 있어 둘 다일 가능성이 높고, 나머지는 심볼이 시장을 가르는지 거래소마다 본다
+  - **`checksum.rs`.** bitget·kraken 은 체크섬을 따로 계산한다. OKX 와 같은 결론(안 싣는다)
+        이면 셋 다 안 싣고, 싣기로 하면 `SnapshotDeltaPayload` 패딩 + `delta_flags` 한 비트에
+        세 거래소가 같이 들어간다. 한 거래소만 위해 ABI 를 움직이지는 않는다
+  - **키 스캔은 `next_field` 로 시작한다.** 첫 바이트 디스패치가 되는지는 거래소마다
+        확인해야 하는 성질이고(CLAUDE.md), 확인 전에는 조용히 틀리지 않는 쪽이 기본값이다
+- [ ] **`jeed-crypto` 수신부** — WS + TLS. `tungstenite` 를 워크스페이스에 들일지 먼저 정한다.
+      fractal-engine `receiver/crypto.rs` 는 Linux epoll / Windows thread-per-socket 두 갈래.
+      다섯 거래소가 더 붙어도 수신부는 하나이므로, 거래소를 마저 가져오는 것과 순서가 바뀌어도
+      된다 — 디코더는 바이트 슬라이스만 보고 수신부는 디코더를 모른다
+- [ ] **`jeed` 바이너리** — conf 로딩, 코어 핀, 세그먼트 생성, 소켓 가입, 기동 검증.
+      지금 `crates/jeed/` 는 없다. KRX·FIX·크립토 셋이 각자 수신부를 갖고 있으므로
+      바이너리가 정하는 건 "무엇을 띄우고 어느 코어에 붙이고 어느 세그먼트에 쓰느냐" 뿐이다
 - [ ] **pcap 리플레이 검증** — `E:/Data/krx_pcap` 을 넣어 §4 의 대조 + 종료키워드·길이 통계
 
 ## 7. feed_handler.md §15 미구현
@@ -516,7 +643,13 @@ G711F  KR4D056869S2 스프레드   상한 000000.00  하한 000000.00   ← 제�
 - **재전송 포트(20301 등) 사용 여부.** feed_handler §11④ 가 "재전송 포트 혼용 시 역전이 생길 수 있다" 고
   적고 있다. 12% 유실을 메우려면 쓰고 싶지만 순서 보장이 깨진다
 - **소비자가 Jeed 를 path 의존으로 볼지 git 의존으로 볼지.** `jeed-wire` 버저닝 방식이 달라진다
-- **`jeed-fix` 의 출구.** 베뉴 어댑터 없이는 `MdMessage` 까지만 나온다. 어느 베뉴를 먼저 붙일지
+- **`jeed-fix` 의 출구 — 자리는 났고 입주자가 없다.** `MdAdapter`(`venue`/`scales`/`adapt`)가
+  그 자리다. 남은 질문은 어느 베뉴를 먼저 붙이느냐이고, 붙는 순간 §12 의 실캡처 대조가
+  `MdMessage` 가 아니라 `WireRecord` 까지 내려간다. 지금 테스트가 쓰는 건 `tests/recv/adapter.rs`
+  의 대역이다 — SMBS 를 본떴지만 SMBS 가 아니고, 진짜는 베뉴 옆에 있어야 한다
+- **`35=V` 를 누가 보내는가.** 구독은 프로토콜 의무가 아니라 베뉴와의 대화라(깊이·증분 여부·
+  엔트리 타입) 루프가 스스로 보내지 않는다. 지금은 `Receiver::subscribe` 를 바이너리가
+  로그온 후에 부른다. 베뉴가 늘면 이게 어댑터 훅이 되어야 할 수도 있다
 - SMBS 방언 (보류)
 
 ## 11. `jeed-shm` 링 설계 (2026-09-13)

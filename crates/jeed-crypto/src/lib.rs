@@ -55,10 +55,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod binance;
+pub mod bithumb;
 pub mod book;
+pub mod bybit;
 pub mod error;
 pub mod instrument;
 pub mod json;
+pub mod okx;
+pub mod upbit;
 
 pub(crate) mod delta;
 pub(crate) mod mask;
