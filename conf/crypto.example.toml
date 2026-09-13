@@ -35,7 +35,9 @@ venue = "binance-spot"
 mode  = "block"         # WebSocket 은 초당 수백 건이라 block 이 기본. spin 은 코어 100%
 cores = [4]
 ring  = "jeed.crypto.binance-spot"
-ring_slots = 65536      # 슬롯 하나 640B → 약 40MB. 2의 거듭제곱이어야 한다
+ring_slots = 16384      # 슬롯 하나 640B → 10 MiB. 2의 거듭제곱이어야 한다.
+                        # 링은 한 CCD 의 L3(32 MiB)를 넘지 않는다 — 넘으면 매 슬롯이
+                        # DRAM RFO 가 되고 소비자의 북을 L3 밖으로 밀어낸다
 # url = "wss://stream.binance.com:9443/stream"   # 거래소 기본값. 프록시·테스트넷이면 바꾼다
 # ping_secs = 30        # 이만큼 조용하면 프로토콜 ping, 두 배 동안 아무것도 안 오면 끊고 재접속
 # reconnect_secs = 5    # 재접속 간격. 지수 백오프가 아니다 — 거래소는 정해진 시각에 돌아온다

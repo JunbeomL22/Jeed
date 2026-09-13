@@ -29,7 +29,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Feed handler, on its pinned core.
 //! let name = SegmentName::local("jeed.krx.hot")?;
-//! let mut tx = RingProducer::create(&name, 1 << 16, 0xfeed_0001)?;
+//! let mut tx = RingProducer::create(&name, 1 << 14, 0xfeed_0001)?;
 //! # let decoded_ok = |_: &mut WireRecord| true;
 //! let mut slot = tx.slot();
 //! if decoded_ok(&mut slot) {

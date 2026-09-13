@@ -3,7 +3,7 @@
 //! ```toml
 //! [[feed]]
 //! name = "smbs"   venue = "smbs"   mode = "block"   cores = [4]
-//! ring = "jeed.fix.smbs"   ring_slots = 65536
+//! ring = "jeed.fix.smbs"   ring_slots = 16384
 //! host = "10.0.0.1"   port = 9100
 //! sender_comp_id = "JEED"   target_comp_id = "SMBS"
 //! price_decimals = 2   qty_decimals = 0

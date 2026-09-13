@@ -5,7 +5,7 @@
 //!
 //! [[feed]]
 //! name = "hot"          mode = "spin"       cores = [2]
-//! ring = "jeed.krx.hot" ring_slots = 65536
+//! ring = "jeed.krx.hot" ring_slots = 16384
 //! sockets = ["233.x.x.92:10302"]
 //! trcodes = ["B601F", "G701F"]
 //!

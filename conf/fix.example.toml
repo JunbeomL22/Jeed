@@ -30,7 +30,9 @@ venue = "smbs"
 mode  = "block"          # 시장데이터 세션은 초당 수 건이라 block 이 기본
 cores = [4]
 ring  = "jeed.fix.smbs"
-ring_slots = 65536       # 슬롯 하나 640B → 약 40MB. 2의 거듭제곱이어야 한다
+ring_slots = 16384      # 슬롯 하나 640B → 10 MiB. 2의 거듭제곱이어야 한다.
+                        # 링은 한 CCD 의 L3(32 MiB)를 넘지 않는다 — 넘으면 매 슬롯이
+                        # DRAM RFO 가 되고 소비자의 북을 L3 밖으로 밀어낸다
 
 host = "10.0.0.1"        # 회선 배정표
 port = 9100

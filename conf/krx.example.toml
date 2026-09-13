@@ -36,7 +36,9 @@ mode  = "spin"          # 논블로킹 소켓을 도는 busy-spin. 코어 100%
 cores = [2]             # 핀 코어 1개 = 수신 스레드 1개 = producer 1개 = 링 1개.
                         # SMT 형제(7700 기준 10)는 비워 둔다
 ring  = "jeed.krx.hot"
-ring_slots = 65536      # 슬롯 하나 640B → 약 40MB. 2의 거듭제곱이어야 한다
+ring_slots = 16384      # 슬롯 하나 640B → 10 MiB. 2의 거듭제곱이어야 한다.
+                        # 링은 한 CCD 의 L3(32 MiB)를 넘지 않는다 — 넘으면 매 슬롯이
+                        # DRAM RFO 가 되고 소비자의 북을 L3 밖으로 밀어낸다
 # burst = 64                    # 한 라운드에 소켓 하나에서 읽는 최대 데이터그램 수 (기본 64)
 # recv_buffer_bytes = 8388608   # SO_RCVBUF (기본 8 MiB). 리눅스는 rmem_max 에 잘린다
 

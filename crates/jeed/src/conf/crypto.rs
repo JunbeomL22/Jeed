@@ -3,7 +3,7 @@
 //! ```toml
 //! [[feed]]
 //! name = "binance-spot"   venue = "binance-spot"   mode = "block"   cores = [4]
-//! ring = "jeed.crypto.binance-spot"   ring_slots = 65536
+//! ring = "jeed.crypto.binance-spot"   ring_slots = 16384
 //! # url = "wss://…"   rest = "https://…"   ping_secs = 30   reconnect_secs = 5   burst = 64
 //!
 //! [[feed.instrument]]

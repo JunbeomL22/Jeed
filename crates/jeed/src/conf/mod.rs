@@ -12,7 +12,7 @@
 //!
 //! ## Strict on keys, explicit on zero
 //!
-//! An unknown key is an error, not a warning: `ring_slot = 65536` next to a
+//! An unknown key is an error, not a warning: `ring_slot = 16384` next to a
 //! default `ring_slots` would otherwise run with the wrong size and say
 //! nothing. And a guard that is absent is on, at a conservative value —
 //! `stale_ms` left out once left a book frozen for twenty minutes

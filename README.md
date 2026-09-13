@@ -124,7 +124,7 @@ feed dies, all feeds stop** — the consumer is never left looking at half a mar
 
 The conf rules are the same for all three:
 
-- **An unknown key is a start-up failure.** `ring_slot = 65536` next to a default `ring_slots`
+- **An unknown key is a start-up failure.** `ring_slot = 16384` next to a default `ring_slots`
   must not run silently with the wrong size.
 - **An absent guard is an enabled guard.** No `[health]` section means a 100 ms heartbeat
   record and a 500 ms stale threshold. To turn one off, write `0`.
@@ -155,7 +155,8 @@ name  = "hot"
 mode  = "spin"            # busy-spin, 100 % of one core
 cores = [2]               # exactly one core for a spinning feed; leave its SMT sibling empty
 ring  = "jeed.krx.hot"
-ring_slots = 65536        # × 640 B ≈ 40 MB; must be a power of two
+ring_slots = 16384        # × 640 B = 10 MiB; must be a power of two,
+                          # and must stay inside one CCD's L3 (32 MiB)
 sockets = ["233.38.231.92:10302", "233.38.231.92:10304"]     # from your circuit assignment
 trcodes = ["B601F", "G701F", "B604F", "G704F", "V101F", "Q201F"]
 
@@ -245,7 +246,7 @@ venue = "binance-spot"
 mode  = "block"                       # hundreds of messages a second: block is the default
 cores = [4]
 ring  = "jeed.crypto.binance-spot"
-ring_slots = 65536
+ring_slots = 16384
 # url = "wss://…"                     # override the venue default (proxy, testnet)
 # ping_secs = 30                      # protocol ping after this much silence; twice it → reconnect
 # reconnect_secs = 5
@@ -299,7 +300,7 @@ venue = "smbs"                        # the only FIX venue today
 mode  = "block"
 cores = [4]
 ring  = "jeed.fix.smbs"
-ring_slots = 65536
+ring_slots = 16384
 host = "10.0.0.1"                     # from your circuit assignment
 port = 9100
 sender_comp_id = "JEED"               # tag 49, us
