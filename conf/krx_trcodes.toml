@@ -1,0 +1,907 @@
+# GENERATED — 손으로 고치지 않는다. tools/gen_krx_trcodes.py 를 다시 돌린다.
+# 원본: 접속표준서(정보분배-UDP_TCP실시간)_v1.341-배포용.xlsx
+#
+# 여기에 **멀티캐스트 IP·포트는 없다.** 회선 배정이라 표준서 값이 우리 회선에
+# 그대로 오지 않는다. 배포 설정(conf/krx.toml)은 사람이 적고, 기동 시 거기 적힌
+# trcode 가 이 표에 있는지만 검증한다.
+
+spec_version = "1.341"
+generated = "2026-09-13"
+interface_count = 123
+code_count = 538
+ambiguous_code_count = 3
+
+# 정보구분+시장구분 3바이트 (trcode 의 뒤 3자리) → 상품군.
+# 멀티캐스트 그룹이 상품군마다 갈리므로, 전략이 안 보는 상품군은 소켓을 안 연다.
+[product_group]
+"000" = "전체시장공통"
+"00B" = "일반채권시장공통"
+"00E" = "배출권시장공통"
+"00F" = "파생시장공통"
+"00G" = "금현물시장공통"
+"00K" = "국채시장공통"
+"00M" = "소액채권시장공통"
+"00Q" = "코스닥시장공통"
+"00R" = "레포시장공통"
+"00S" = "유가증권시장공통"
+"00X" = "코넥스시장공통"
+"013" = "주식"
+"01B" = "장내일반채권"
+"01E" = "배출권"
+"01F" = "kospi200선물"
+"01G" = "금"
+"01K" = "장내국채"
+"01M" = "장내소액채권"
+"01Q" = "주식"
+"01R" = "장내RP(REPO)"
+"01S" = "주식"
+"01X" = "주식"
+"02F" = "코스닥150선물"
+"02S" = "ELW"
+"03F" = "KOSPI200옵션"
+"03S" = "ETF"
+"044" = "CME KOSPI200선물"
+"04F" = "주식선물"
+"04S" = "ETN"
+"054" = "EUREX KOSPI200옵션"
+"05F" = "주식옵션"
+"06F" = "금융상품선물(국채,금리,통화)"
+"077" = "장외채권(호가집중)"
+"07F" = "상품옵션(휴면)"
+"08F" = "변동성지수선물"
+"09F" = "섹터지수선물, 코스닥글로벌지수선물"
+"10F" = "일반상품선물(금,돈육(휴면))"
+"11F" = "미니kospi200선물"
+"126" = "CME 미국달러선물(야간)"
+"12F" = "미니kospi200옵션"
+"13F" = "KRX300선물"
+"14F" = "EURO STOXX 50선물"
+"154" = "EUREX 미니코스피200선물"
+"15F" = "코스닥150옵션"
+"16F" = "코스피 200 위클리 옵션"
+"909" = "기타"
+
+# 데이터구분 2바이트 (trcode 의 앞 2자리) → 이 구분을 쓰는 인터페이스.
+# 표준서에 표가 없어서 코드에서 역산했다.
+[data_class]
+# A0: 증권 종목정보 / 채권 종목정보 / REPO 종목정보 / 파생 종목정보 / 금현물 종목정보 / 배출권 종목정보
+"A0" = ["IFMSBTD0001", "IFMSBTD0016", "IFMSBTD0017", "IFMSBTD0022", "IFMSBTD0027", "IFMSBTD0028"]
+# A1: ELW 종목정보 / ETN 종목정보
+"A1" = ["IFMSBTD0004", "IFMSBTD0005"]
+# A3: 증권 체결 / 채권 체결 / 파생 체결 / 금현물 체결 / 배출권 체결
+"A3" = ["IFMSRPD0004", "IFMSRPD0027", "IFMSRPD0036", "IFMSRPD0047", "IFMSRPD0052"]
+# A4: 기준가결정 / 배출권 기준가결정
+"A4" = ["IFMSRPD0011", "IFMSRPD0065"]
+# A5: 임의종료
+"A5" = ["IFMSRPD0012"]
+# A6: 종목마감 / 채권 종목마감 / 파생 종목마감
+"A6" = ["IFMSRPD0013", "IFMSRPD0032", "IFMSRPD0041"]
+# A7: 장운영TS
+"A7" = ["IFMSRPD0008"]
+# A8: 주식종목정보변경
+"A8" = ["IFMSRPD0018"]
+# A9: 자사주 배치 정보
+"A9" = ["IFMSBTD0014"]
+# AC: 종목별 경매결과
+"AC" = ["IFMSSTD0013"]
+# B0: 자사주 매매 정보
+"B0" = ["IFMSRPD0056"]
+# B2: 증권 Snapshot (MM/LP호가 제외) / 증권 Snapshot (MM/LP호가 포함) / 파생 시세 Snapshot (우선호가 5단계) / 파생 시세 Snapshot (우선호가 10단계) / 금현물 시세 snapshot 데이터 / 배출권시세 snapshot 데이터 / 주식파생 기초자산 정보 snapshot 데이터
+"B2" = ["IFMSRPD0021", "IFMSRPD0022", "IFMSRPD0044", "IFMSRPD0045", "IFMSRPD0050", "IFMSRPD0055", "IFMSRPD0062"]
+# B5: 현재등락
+"B5" = ["IFMSSTD0007"]
+# B6: 증권 우선호가 (MM/LP호가 제외) / 일반채권, 국고채권 우선호가 / 소액채권 우선호가 / REPO 우선호가 / 파생 우선호가 (우선호가 5단계) / 파생 우선호가 (우선호가 10단계) / 금현물 우선호가 / 배출권 우선호가
+"B6" = ["IFMSRPD0002", "IFMSRPD0023", "IFMSRPD0024", "IFMSRPD0025", "IFMSRPD0034", "IFMSRPD0035", "IFMSRPD0046", "IFMSRPD0051"]
+# B7: 증권 우선호가 (MM/LP호가 포함)
+"B7" = ["IFMSRPD0003"]
+# B8: 주식 종가매매 호가잔량
+"B8" = ["IFMSRPD0063"]
+# B9: 거래상위 5개 회원 통계
+"B9" = ["IFMSSTD0006"]
+# BN: 일반채권 분할상환일 정보
+"BN" = ["IFMSBTD0021"]
+# C0: 업종별 투자자별 통계
+"C0" = ["IFMSSTD0001"]
+# C1: 종목별 투자자별 종가통계
+"C1" = ["IFMSSTD0003"]
+# C3: 프로그램매매 종목별집계
+"C3" = ["IFMSSTD0009"]
+# C4: 협의거래 결과 / REPO 협의거래 결과 / 파생 협의거래 결과 / 금현물 협의거래 결과 / 배출권 협의거래 결과 / 채권 협의거래 결과
+"C4" = ["IFMSRPD0057", "IFMSRPD0058", "IFMSRPD0059", "IFMSRPD0060", "IFMSRPD0061", "IFMSRPD0067"]
+# CA: 증권 지수지표
+"CA" = ["IFMSBTD0002"]
+# CB: REPO 분류정보
+"CB" = ["IFMSBTD0029"]
+# E9: 전자공시
+"E9" = ["IFMSRID0037"]
+# F0: 전자공시
+"F0" = ["IFMSRID0037"]
+# F9: 주식관련사채/소액채권 발행정보
+"F9" = ["IFMSBTD0020"]
+# FT: 인터넷 리커버리 응답 HEADER / FOOTER
+"FT" = ["IFNDRCY0002"]
+# G0: 소액채권 신고시장 수익률
+"G0" = ["IFMSRID0003"]
+# G3: 소매채권분류코드 정보
+"G3" = ["IFMSBTD0018"]
+# G7: 일반채권, 국고채권 체결 + 우선호가 / 소액채권 체결 + 우선호가 / REPO 체결 + 우선호가 / 파생 체결 + 우선호가 (우선호가 5단계) / 파생 체결 + 우선호가 (우선호가 10단계) / 금현물 체결 + 우선호가 / 배출권 체결 + 우선호가
+"G7" = ["IFMSRPD0029", "IFMSRPD0030", "IFMSRPD0031", "IFMSRPD0037", "IFMSRPD0038", "IFMSRPD0048", "IFMSRPD0053"]
+# H1: 파생 상품별 투자자별 통계 / 파생 상품별 투자자별 통계
+"H1" = ["IFMSRID0007", "IFMSSTD0005"]
+# H2: 파생종목 미결제약정수량 데이터
+"H2" = ["IFMSRID0008"]
+# H3: 선물종목 정산가격 데이터
+"H3" = ["IFMSRID0009"]
+# H4: 주식파생 조정내역
+"H4" = ["IFMSBTD0025"]
+# H5: 상품선물 현물정보 결제기준 국고채권 수익률 및 CD금리
+"H5" = ["IFMSRID0013"]
+# H6: 상품선물 결제기준 국고채권 정보
+"H6" = ["IFMSBTD0026"]
+# HA: RFR일별공시금리
+"HA" = ["IFMSRID0041"]
+# HE: 인터넷 리커버리 응답 HEADER / FOOTER
+"HE" = ["IFNDRCY0002"]
+# I2: Polling Data
+"I2" = ["IFMSRPD0001"]
+# I5: 결산일 정보
+"I5" = ["IFMSBTD0009"]
+# I6: 종목이벤트 정보
+"I6" = ["IFMSBTD0010"]
+# I7: MM/LP 정보
+"I7" = ["IFMSBTD0011"]
+# I8: 공매도정보
+"I8" = ["IFMSSTD0012"]
+# IC: 상품별 투자자별 통계
+"IC" = ["IFMSSTD0004"]
+# ID: 옵션종목 매매증거금 기준가 데이터
+"ID" = ["IFMSRID0010"]
+# IE: 경쟁대량매매 호가 정보
+"IE" = ["IFMSRPD0066"]
+# IF: 그룹호가접수중지/해제 공개
+"IF" = ["IFMSRPD0068"]
+# J0: 프로그램매매 전체집계
+"J0" = ["IFMSSTD0010"]
+# J9: 채권표준코드 발행정보
+"J9" = ["IFMSRID0038"]
+# JA: 채권표준코드 신용평가정보
+"JA" = ["IFMSRID0039"]
+# JB: 채권표준코드 발행정보 TEXT
+"JB" = ["IFMSRID0040"]
+# LK: 인터넷 LINK 메세지
+"LK" = ["IFNDRCY0001"]
+# M2: 외부 금현물 시세정보 / 외부 금현물 종가정보
+"M2" = ["IFMSRID0035", "IFMSRID0036"]
+# M4: 장운영스케줄공개
+"M4" = ["IFMSRPD0019"]
+# M5: 조기종료 ELW 기초자산 고저가
+"M5" = ["IFMSRID0002"]
+# M6: ELW 조기종료 정보
+"M6" = ["IFMSBTD0006"]
+# M7: Eurex연계 장개시전 협의거래
+"M7" = ["IFMSRPD0064"]
+# M9: 회원사 정보
+"M9" = ["IFMSBTD0012"]
+# N7: 옵션종목 민감도 데이터
+"N7" = ["IFMSRID0012"]
+# O4: Buy-in 실행수량
+"O4" = ["IFMSRID0001"]
+# O6: 배분정보
+"O6" = ["IFMSRPD0017"]
+# OA: 일반채권, 소액채권 총호가잔량
+"OA" = ["IFMSRPD0026"]
+# P0: 프로그램매매 투자자별 통계
+"P0" = ["IFMSSTD0008"]
+# P1: 옵션종목 내재변동성 데이터
+"P1" = ["IFMSRID0011"]
+# P2: 업종별 배당수익률
+"P2" = ["IFMSBTD0003"]
+# P4: 채권분류별 투자자별 통계
+"P4" = ["IFMSSTD0002"]
+# PA: 국고채권 WIT 확정정보
+"PA" = ["IFMSRID0004"]
+# PB: 국고채권 단기수익률
+"PB" = ["IFMSRID0005"]
+# PC: 국고채권 평균수익률
+"PC" = ["IFMSRID0006"]
+# Q0: 경매매 신청 정보
+"Q0" = ["IFMSBTD0015"]
+# Q2: 파생 동적상하한가 적용 및 해제
+"Q2" = ["IFMSRPD0042"]
+# R1: 파생 장운영TS + 우선호가 (우선호가 5단계) / 파생 장운영TS + 우선호가 (우선호가 10단계) / 금현물 장운영TS+우선호가 / 배출권 장운영TS + 우선호가
+"R1" = ["IFMSRPD0039", "IFMSRPD0040", "IFMSRPD0049", "IFMSRPD0054"]
+# R3: 회원제재해제공개
+"R3" = ["IFMSRPD0020"]
+# R4: 일반채권 결제적용 기준환율 공개
+"R4" = ["IFMSRPD0033"]
+# R8: VI 발동/해제 정보
+"R8" = ["IFMSRPD0014"]
+# S0: REPO 거래일물가능 정보
+"S0" = ["IFMSBTD0019"]
+# V1: 파생 가격제한폭확대발동
+"V1" = ["IFMSRPD0043"]
+# V6: ETP 지수구성 정보
+"V6" = ["IFMSBTD0013"]
+# X1: 유로스톡스50선물 최신기초자산 종가
+"X1" = ["IFMSBTD0024"]
+# X3: ETN 조기상환조건 정보
+"X3" = ["IFMSBTD0007"]
+# X8: ETN 수익구조내용 정보
+"X8" = ["IFMSBTD0008"]
+
+# 인터페이스 → 전문 길이. 길이는 인터페이스 단위로 고정이다.
+# 디코더는 길이 + 종료키워드(0xFF)를 먼저 보고 그 다음에 필드를 읽는다.
+[interface]
+IFMSBTD0001 = { length = 631, market = "STK/KSQ/KNX/DRV", period = "05:30, 06:10, 06:50 3회 전송", name = "증권 종목정보" }
+IFMSBTD0002 = { length = 185, market = "STK/KSQ/DRV", period = "05:30, 06:10, 06:50 3회 전송", name = "증권 지수지표" }
+IFMSBTD0003 = { length = 36, market = "STK/KSQ", period = "05:30, 06:10, 06:50 3회 전송", name = "업종별 배당수익률" }
+IFMSBTD0004 = { length = 930, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ELW 종목정보" }
+IFMSBTD0005 = { length = 260, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ETN 종목정보" }
+IFMSBTD0006 = { length = 539, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ELW 조기종료 정보" }
+IFMSBTD0007 = { length = 88, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ETN 조기상환조건 정보" }
+IFMSBTD0008 = { length = 2026, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ETN 수익구조내용 정보" }
+IFMSBTD0009 = { length = 30, market = "STK/KSQ/KNX/DRV", period = "05:30, 06:10, 06:50 3회 전송", name = "결산일 정보" }
+IFMSBTD0010 = { length = 48, market = "STK/KSQ/KNX/BND/SMB/KTS/RPO/DRV", period = "05:30, 06:10, 06:50 3회 전송", name = "종목이벤트 정보" }
+IFMSBTD0011 = { length = 197, market = "STK/KSQ/KNX", period = "05:30, 06:10, 06:50 3회 전송", name = "MM/LP 정보" }
+IFMSBTD0012 = { length = 207, market = "STK/KSQ/KNX", period = "05:30, 06:10, 06:50 3회 전송", name = "회원사 정보" }
+IFMSBTD0013 = { length = 209, market = "STK", period = "05:30, 06:10, 06:50 3회 전송", name = "ETP 지수구성 정보" }
+IFMSBTD0014 = { length = 135, market = "STK/KSQ/KNX", period = "05:30, 06:10, 06:50 3회 전송", name = "자사주 배치 정보" }
+IFMSBTD0015 = { length = 67, market = "KNX", period = "05:30, 06:10, 06:50 3회 전송", name = "경매매 신청 정보" }
+IFMSBTD0016 = { length = 308, market = "BND", period = "06:10, 06:50 2회 전송", name = "채권 종목정보" }
+IFMSBTD0017 = { length = 100, market = "RPO", period = "06:10, 06:50 2회 전송", name = "REPO 종목정보" }
+IFMSBTD0018 = { length = 57, market = "BND", period = "06:10, 06:50 2회 전송", name = "소매채권분류코드 정보" }
+IFMSBTD0019 = { length = 59, market = "RPO", period = "06:10, 06:50 2회 전송", name = "REPO 거래일물가능 정보" }
+IFMSBTD0020 = { length = 245, market = "BND/SMB", period = "06:10, 06:50 2회 전송", name = "주식관련사채/소액채권 발행정보" }
+IFMSBTD0021 = { length = 34, market = "BND", period = "06:10, 06:50 2회 전송", name = "일반채권 분할상환일 정보" }
+IFMSBTD0022 = { length = 1318, market = "DRV", period = "06:30, 07:00, 07:30, 07:50 4회 전송", name = "파생 종목정보" }
+IFMSBTD0024 = { length = 19, market = "DRV", period = "07:30, 07:50 2회 전송", name = "유로스톡스50선물 최신기초자산 종가" }
+IFMSBTD0025 = { length = 156, market = "DRV", period = "17:00 (장종료 후)", name = "주식파생 조정내역" }
+IFMSBTD0026 = { length = 71, market = "DRV", period = "06:30, 07;00 2회 전송", name = "상품선물 결제기준 국고채권 정보" }
+IFMSBTD0027 = { length = 413, market = "CMD", period = "05:30, 06:10, 06:50 3회 전송", name = "금현물 종목정보" }
+IFMSBTD0028 = { length = 413, market = "ETS", period = "05:30, 06:10, 06:50 3회 전송", name = "배출권 종목정보" }
+IFMSBTD0029 = { length = 44, market = "RPO", period = "06:10, 06:50 2회 전송", name = "REPO 분류정보" }
+IFMSRID0001 = { length = 52, market = "STK/KSQ/KNX", period = "일반 : 14:30 이후 당일 : 17:10 이후", name = "Buy-in 실행수량" }
+IFMSRID0002 = { length = 95, market = "STK", period = "장종료후 2회", name = "조기종료 ELW 기초자산 고저가" }
+IFMSRID0003 = { length = 73, market = "SMB", period = "16:30 이후", name = "소액채권 신고시장 수익률" }
+IFMSRID0004 = { length = 72, market = "KTS", period = "16:05 이후", name = "국고채권 WIT 확정정보" }
+IFMSRID0005 = { length = 37, market = "KTS", period = "09:00 ~ 16:00", name = "국고채권 단기수익률" }
+IFMSRID0006 = { length = 37, market = "KTS", period = "11:30, 15:30", name = "국고채권 평균수익률" }
+IFMSRID0007 = { length = 166, market = "DRV", period = "전일확정치 : 07:30 당일확정치 : 16:30", name = "파생 상품별 투자자별 통계" }
+IFMSRID0008 = { length = 44, market = "DRV", period = "전일확정치 : 장개시전 장중 : 10초주기 당일확정치 : 장종료후", name = "파생종목 미결제약정수량 데이터" }
+IFMSRID0009 = { length = 63, market = "DRV", period = "장종료후", name = "선물종목 정산가격 데이터" }
+IFMSRID0010 = { length = 63, market = "DRV", period = "장종료후", name = "옵션종목 매매증거금 기준가 데이터" }
+IFMSRID0011 = { length = 50, market = "DRV", period = "장종료후 2회", name = "옵션종목 내재변동성 데이터" }
+IFMSRID0012 = { length = 145, market = "DRV", period = "장중 : 10초주기", name = "옵션종목 민감도 데이터" }
+IFMSRID0013 = { length = 60, market = "DRV", period = "15:30 이후 평일 : 오전, 오후 1회 금리선물 만기일 : 5회", name = "상품선물 현물정보 결제기준 국고채권 수익률 및 CD금리" }
+IFMSRID0035 = { length = 125, market = "CMD", period = "08:30~15:45", name = "외부 금현물 시세정보" }
+IFMSRID0036 = { length = 125, market = "CMD", period = "15:45", name = "외부 금현물 종가정보" }
+IFMSRID0037 = { length = 1366, market = "STK", period = "07:00~20:30 06:10, 06:50 2회 전송", name = "전자공시" }
+IFMSRID0038 = { length = 903, market = "BND", period = "05:00~20:30", name = "채권표준코드 발행정보" }
+IFMSRID0039 = { length = 70, market = "BND", period = "05:00~20:30", name = "채권표준코드 신용평가정보" }
+IFMSRID0040 = { length = 654, market = "BND", period = "05:00~20:30", name = "채권표준코드 발행정보 TEXT" }
+IFMSRID0041 = { length = 87, market = "DRV", period = "발생시 제공", name = "RFR일별공시금리" }
+IFMSRPD0001 = { length = 10, market = "ALL", period = "24-365", name = "Polling Data" }
+IFMSRPD0002 = { length = 590, market = "STK/KSQ/KNX", period = "실시간", name = "증권 우선호가 (MM/LP호가 제외)" }
+IFMSRPD0003 = { length = 830, market = "STK", period = "실시간", name = "증권 우선호가 (MM/LP호가 포함)" }
+IFMSRPD0004 = { length = 186, market = "STK/KSQ/KNX", period = "실시간", name = "증권 체결" }
+IFMSRPD0008 = { length = 68, market = "ALL", period = "실시간", name = "장운영TS" }
+IFMSRPD0011 = { length = 67, market = "STK/KSQ/KNX", period = "실시간", name = "기준가결정" }
+IFMSRPD0012 = { length = 35, market = "KNX/CMD", period = "실시간", name = "임의종료" }
+IFMSRPD0013 = { length = 112, market = "STK/KSQ/KNX/CMD/ETS", period = "실시간", name = "종목마감" }
+IFMSRPD0014 = { length = 116, market = "STK/KSQ", period = "실시간", name = "VI 발동/해제 정보" }
+IFMSRPD0017 = { length = 45, market = "STK/KSQ/KNX/DRV", period = "실시간", name = "배분정보" }
+IFMSRPD0018 = { length = 129, market = "STK/KSQ/KNX", period = "실시간", name = "주식종목정보변경" }
+IFMSRPD0019 = { length = 83, market = "STK/KSQ/KNX/BND/SMB/KTS/RPO/DRV/CMD/ETS", period = "실시간", name = "장운영스케줄공개" }
+IFMSRPD0020 = { length = 46, market = "STK/KSQ/KNX/BND/SMB/KTS/RPO", period = "실시간", name = "회원제재해제공개" }
+IFMSRPD0021 = { length = 685, market = "STK/KSQ/KNX", period = "실시간 [건당 0.2초/전종목 전송후 30초 sleep] * 주기변경 가능", name = "증권 Snapshot (MM/LP호가 제외)" }
+IFMSRPD0022 = { length = 935, market = "STK", period = "실시간 [건당 0.2초/전종목 전송후 30초 sleep] * 주기변경 가능", name = "증권 Snapshot (MM/LP호가 포함)" }
+IFMSRPD0023 = { length = 462, market = "BND/KTS", period = "실시간", name = "일반채권, 국고채권 우선호가" }
+IFMSRPD0024 = { length = 882, market = "SMB", period = "실시간", name = "소액채권 우선호가" }
+IFMSRPD0025 = { length = 1387, market = "RPO", period = "실시간", name = "REPO 우선호가" }
+IFMSRPD0026 = { length = 106, market = "BND/SMB", period = "실시간", name = "일반채권, 소액채권 총호가잔량" }
+IFMSRPD0027 = { length = 223, market = "BND/SMB/KTS", period = "실시간", name = "채권 체결" }
+IFMSRPD0029 = { length = 643, market = "BND/KTS", period = "실시간", name = "일반채권, 국고채권 체결 + 우선호가" }
+IFMSRPD0030 = { length = 1063, market = "SMB", period = "실시간", name = "소액채권 체결 + 우선호가" }
+IFMSRPD0031 = { length = 1586, market = "RPO", period = "실시간", name = "REPO 체결 + 우선호가" }
+IFMSRPD0032 = { length = 57, market = "BND/SMB/KTS/RPO", period = "실시간", name = "채권 종목마감" }
+IFMSRPD0033 = { length = 32, market = "BND", period = "실시간", name = "일반채권 결제적용 기준환율 공개" }
+IFMSRPD0034 = { length = 324, market = "DRV", period = "실시간", name = "파생 우선호가 (우선호가 5단계)" }
+IFMSRPD0035 = { length = 554, market = "DRV", period = "실시간", name = "파생 우선호가 (우선호가 10단계)" }
+IFMSRPD0036 = { length = 173, market = "DRV", period = "실시간", name = "파생 체결" }
+IFMSRPD0037 = { length = 431, market = "DRV", period = "실시간", name = "파생 체결 + 우선호가 (우선호가 5단계)" }
+IFMSRPD0038 = { length = 661, market = "DRV", period = "실시간", name = "파생 체결 + 우선호가 (우선호가 10단계)" }
+IFMSRPD0039 = { length = 359, market = "DRV", period = "실시간", name = "파생 장운영TS + 우선호가 (우선호가 5단계)" }
+IFMSRPD0040 = { length = 589, market = "DRV", period = "실시간", name = "파생 장운영TS + 우선호가 (우선호가 10단계)" }
+IFMSRPD0041 = { length = 78, market = "DRV", period = "실시간", name = "파생 종목마감" }
+IFMSRPD0042 = { length = 65, market = "DRV", period = "실시간", name = "파생 동적상하한가 적용 및 해제" }
+IFMSRPD0043 = { length = 65, market = "DRV", period = "실시간", name = "파생 가격제한폭확대발동" }
+IFMSRPD0044 = { length = 421, market = "DRV", period = "실시간 [건당 0.1초] [파생B : 건당 5초] * 주기변경 가능", name = "파생 시세 Snapshot (우선호가 5단계)" }
+IFMSRPD0045 = { length = 651, market = "DRV", period = "실시간 [건당 0.1초] * 주기변경 가능", name = "파생 시세 Snapshot (우선호가 10단계)" }
+IFMSRPD0046 = { length = 795, market = "CMD", period = "실시간", name = "금현물 우선호가" }
+IFMSRPD0047 = { length = 163, market = "CMD", period = "실시간", name = "금현물 체결" }
+IFMSRPD0048 = { length = 887, market = "CMD", period = "실시간", name = "금현물 체결 + 우선호가" }
+IFMSRPD0049 = { length = 815, market = "CMD", period = "실시간", name = "금현물 장운영TS+우선호가" }
+IFMSRPD0050 = { length = 854, market = "CMD", period = "10초주기 * 주기변경 가능", name = "금현물 시세 snapshot 데이터" }
+IFMSRPD0051 = { length = 325, market = "ETS", period = "실시간", name = "배출권 우선호가" }
+IFMSRPD0052 = { length = 148, market = "ETS", period = "실시간", name = "배출권 체결" }
+IFMSRPD0053 = { length = 402, market = "ETS", period = "실시간", name = "배출권 체결 + 우선호가" }
+IFMSRPD0054 = { length = 345, market = "ETS", period = "실시간", name = "배출권 장운영TS + 우선호가" }
+IFMSRPD0055 = { length = 418, market = "ETS", period = "10초주기 * 주기변경 가능", name = "배출권시세 snapshot 데이터" }
+IFMSRPD0056 = { length = 57, market = "STK/KSQ/KNX", period = "실시간 장종료 후 1회", name = "자사주 매매 정보" }
+IFMSRPD0057 = { length = 60, market = "STK/KSQ/KNX", period = "장종료 후 2회", name = "협의거래 결과" }
+IFMSRPD0058 = { length = 55, market = "RPO", period = "장종료 후 2회", name = "REPO 협의거래 결과" }
+IFMSRPD0059 = { length = 61, market = "DRV", period = "장종료 후 2회", name = "파생 협의거래 결과" }
+IFMSRPD0060 = { length = 98, market = "CMD", period = "장종료 후 2회", name = "금현물 협의거래 결과" }
+IFMSRPD0061 = { length = 81, market = "ETS", period = "장종료 후 2회", name = "배출권 협의거래 결과" }
+IFMSRPD0062 = { length = 136, market = "STK/KSQ", period = "실시간 [건당 0.2초/전종목 전송후 30초 sleep] * 주기변경 가능", name = "주식파생 기초자산 정보 snapshot 데이터" }
+IFMSRPD0063 = { length = 82, market = "STK/KSQ/KNX", period = "실시간", name = "주식 종가매매 호가잔량" }
+IFMSRPD0064 = { length = 42, market = "DRV", period = "08:45 1회", name = "Eurex연계 장개시전 협의거래" }
+IFMSRPD0065 = { length = 89, market = "ETS", period = "실시간", name = "배출권 기준가결정" }
+IFMSRPD0066 = { length = 47, market = "STK/KSQ", period = "실시간", name = "경쟁대량매매 호가 정보" }
+IFMSRPD0067 = { length = 41, market = "BND", period = "장종료 후 2회", name = "채권 협의거래 결과" }
+IFMSRPD0068 = { length = 33, market = "STK/KSQ/DRV", period = "실시간", name = "그룹호가접수중지/해제 공개" }
+IFMSSTD0001 = { length = 105, market = "STK/KSQ/KNX", period = "09:00~18:00 [90초 주기]", name = "업종별 투자자별 통계" }
+IFMSSTD0002 = { length = 90, market = "BND/SMB/KTS", period = "16:00 이후 2회 [채권 3개시장 장종료 후]", name = "채권분류별 투자자별 통계" }
+IFMSSTD0003 = { length = 96, market = "STK/KSQ/KNX/CMD", period = "15:30 1회(메인종가) 18:00 2회(장종료) CMD : 15:30 2회(장종료)", name = "종목별 투자자별 종가통계" }
+IFMSSTD0004 = { length = 84, market = "STK/CMD", period = "09:00~18:00 금현물만 : 09:00~15:30 [90초 주기]", name = "상품별 투자자별 통계" }
+IFMSSTD0005 = { length = 166, market = "DRV", period = "08:45~15:45 [30초 주기]", name = "파생 상품별 투자자별 통계" }
+IFMSSTD0006 = { length = 414, market = "STK/KSQ/KNX", period = "Real-time", name = "거래상위 5개 회원 통계" }
+IFMSSTD0007 = { length = 56, market = "STK/KSQ/KNX", period = "09:00~15:30 [10초 주기]", name = "현재등락" }
+IFMSSTD0008 = { length = 164, market = "STK/KSQ", period = "08:30~18:00 [90초 주기]", name = "프로그램매매 투자자별 통계" }
+IFMSSTD0009 = { length = 400, market = "STK/KSQ", period = "08:30~18:00 실시간", name = "프로그램매매 종목별집계" }
+IFMSSTD0010 = { length = 382, market = "STK/KSQ", period = "08:30~18:00 실시간", name = "프로그램매매 전체집계" }
+IFMSSTD0012 = { length = 120, market = "STK/KSQ", period = "15:30, 18:00", name = "공매도정보" }
+IFMSSTD0013 = { length = 95, market = "ETS", period = "[장종료/10초주기 2회]", name = "종목별 경매결과" }
+IFNDRCY0001 = { length = 12, market = "ALL", period = "메시지 미발생 1분마다", name = "인터넷 LINK 메세지" }
+IFNDRCY0002 = { length = 12, market = "ALL", period = "리커버리 요청시", name = "인터넷 리커버리 응답 HEADER / FOOTER" }
+IFNDRCY0003 = { length = 12, market = "ALL", period = "온라인", name = "인터넷 리커버리 요청" }
+
+# trcode → 인터페이스. 길이는 [interface] 에서 끌어온다 (중복 저장하지 않는다).
+# channel 은 표준서의 회선 그룹(증권A/파생A/…)이지 우리 회선이 아니다.
+[code]
+A001B = { interface = "IFMSBTD0016", group = "01B", channel = "채권A", market = "BND" }
+A001E = { interface = "IFMSBTD0028", group = "01E", channel = "일반A", market = "ETS" }
+A001F = { interface = "IFMSBTD0022", group = "01F", channel = "파생A", market = "DRV" }
+A001G = { interface = "IFMSBTD0027", group = "01G", channel = "일반A", market = "CMD" }
+A001Q = { interface = "IFMSBTD0001", group = "01Q", channel = "증권B", market = "KSQ" }
+A001R = { interface = "IFMSBTD0017", group = "01R", channel = "채권A", market = "RPO" }
+A001S = { interface = "IFMSBTD0001", group = "01S", channel = "증권A", market = "STK" }
+A001X = { interface = "IFMSBTD0001", group = "01X", channel = "증권B", market = "KNX" }
+A002F = { interface = "IFMSBTD0022", group = "02F", channel = "파생A", market = "DRV" }
+A002S = { interface = "IFMSBTD0001", group = "02S", channel = "증권C", market = "STK" }
+A003F = { interface = "IFMSBTD0022", group = "03F", channel = "파생A", market = "DRV" }
+A003S = { interface = "IFMSBTD0001", group = "03S", channel = "증권C", market = "STK" }
+A004F = { interface = "IFMSBTD0022", group = "04F", channel = "파생A", market = "DRV" }
+A004S = { interface = "IFMSBTD0001", group = "04S", channel = "증권C", market = "STK" }
+A005F = { interface = "IFMSBTD0022", group = "05F", channel = "파생A", market = "DRV" }
+A006F = { interface = "IFMSBTD0022", group = "06F", channel = "파생A", market = "DRV" }
+A007F = { interface = "IFMSBTD0022", group = "07F", channel = "파생A", market = "DRV" }
+A008F = { interface = "IFMSBTD0022", group = "08F", channel = "파생A", market = "DRV" }
+A009F = { interface = "IFMSBTD0022", group = "09F", channel = "파생A", market = "DRV" }
+A010F = { interface = "IFMSBTD0022", group = "10F", channel = "파생A", market = "DRV" }
+A011F = { interface = "IFMSBTD0022", group = "11F", channel = "파생A", market = "DRV" }
+A012F = { interface = "IFMSBTD0022", group = "12F", channel = "파생A", market = "DRV" }
+A013F = { interface = "IFMSBTD0022", group = "13F", channel = "파생A", market = "DRV" }
+A014F = { interface = "IFMSBTD0022", group = "14F", channel = "파생B", market = "DRV" }
+A015F = { interface = "IFMSBTD0022", group = "15F", channel = "파생A", market = "DRV" }
+A016F = { interface = "IFMSBTD0022", group = "16F", channel = "파생A", market = "DRV" }
+A102S = { interface = "IFMSBTD0004", group = "02S", channel = "증권C", market = "STK" }
+A104S = { interface = "IFMSBTD0005", group = "04S", channel = "증권C", market = "STK" }
+A301B = { interface = "IFMSRPD0027", group = "01B", channel = "채권A", market = "BND" }
+A301E = { interface = "IFMSRPD0052", group = "01E", channel = "일반A", market = "ETS" }
+A301F = { interface = "IFMSRPD0036", group = "01F", channel = "파생A", market = "DRV" }
+A301G = { interface = "IFMSRPD0047", group = "01G", channel = "일반A", market = "CMD" }
+A301K = { interface = "IFMSRPD0027", group = "01K", channel = "채권A", market = "KTS" }
+A301M = { interface = "IFMSRPD0027", group = "01M", channel = "채권A", market = "SMB" }
+A301Q = { interface = "IFMSRPD0004", group = "01Q", channel = "증권B", market = "KSQ" }
+A301S = { interface = "IFMSRPD0004", group = "01S", channel = "증권A", market = "STK" }
+A301X = { interface = "IFMSRPD0004", group = "01X", channel = "증권B", market = "KNX" }
+A302F = { interface = "IFMSRPD0036", group = "02F", channel = "파생A", market = "DRV" }
+A302S = { interface = "IFMSRPD0004", group = "02S", channel = "증권C", market = "STK" }
+A303F = { interface = "IFMSRPD0036", group = "03F", channel = "파생A", market = "DRV" }
+A303S = { interface = "IFMSRPD0004", group = "03S", channel = "증권C", market = "STK" }
+A304F = { interface = "IFMSRPD0036", group = "04F", channel = "파생A", market = "DRV" }
+A304S = { interface = "IFMSRPD0004", group = "04S", channel = "증권C", market = "STK" }
+A305F = { interface = "IFMSRPD0036", group = "05F", channel = "파생A", market = "DRV" }
+A306F = { interface = "IFMSRPD0036", group = "06F", channel = "파생A", market = "DRV" }
+A307F = { interface = "IFMSRPD0036", group = "07F", channel = "파생A", market = "DRV" }
+A308F = { interface = "IFMSRPD0036", group = "08F", channel = "파생A", market = "DRV" }
+A309F = { interface = "IFMSRPD0036", group = "09F", channel = "파생A", market = "DRV" }
+A310F = { interface = "IFMSRPD0036", group = "10F", channel = "파생A", market = "DRV" }
+A311F = { interface = "IFMSRPD0036", group = "11F", channel = "파생A", market = "DRV" }
+A312F = { interface = "IFMSRPD0036", group = "12F", channel = "파생A", market = "DRV" }
+A313F = { interface = "IFMSRPD0036", group = "13F", channel = "파생A", market = "DRV" }
+A314F = { interface = "IFMSRPD0036", group = "14F", channel = "파생B", market = "DRV" }
+A315F = { interface = "IFMSRPD0036", group = "15F", channel = "파생A", market = "DRV" }
+A316F = { interface = "IFMSRPD0036", group = "16F", channel = "파생A", market = "DRV" }
+A401E = { interface = "IFMSRPD0065", group = "01E", channel = "일반A", market = "ETS" }
+A401Q = { interface = "IFMSRPD0011", group = "01Q", channel = "증권B", market = "KSQ" }
+A401S = { interface = "IFMSRPD0011", group = "01S", channel = "증권A", market = "STK" }
+A401X = { interface = "IFMSRPD0011", group = "01X", channel = "증권B", market = "KNX" }
+A403S = { interface = "IFMSRPD0011", group = "03S", channel = "증권C", market = "STK" }
+A404S = { interface = "IFMSRPD0011", group = "04S", channel = "증권C", market = "STK" }
+A501G = { interface = "IFMSRPD0012", group = "01G", channel = "일반A", market = "CMD" }
+A501X = { interface = "IFMSRPD0012", group = "01X", channel = "증권B", market = "KNX" }
+A601B = { interface = "IFMSRPD0032", group = "01B", channel = "채권A", market = "BND" }
+A601E = { interface = "IFMSRPD0013", group = "01E", channel = "일반A", market = "ETS" }
+A601F = { interface = "IFMSRPD0041", group = "01F", channel = "파생A", market = "DRV" }
+A601G = { interface = "IFMSRPD0013", group = "01G", channel = "일반A", market = "CMD" }
+A601K = { interface = "IFMSRPD0032", group = "01K", channel = "채권A", market = "KTS" }
+A601M = { interface = "IFMSRPD0032", group = "01M", channel = "채권A", market = "SMB" }
+A601Q = { interface = "IFMSRPD0013", group = "01Q", channel = "증권B", market = "KSQ" }
+A601R = { interface = "IFMSRPD0032", group = "01R", channel = "채권A", market = "RPO" }
+A601S = { interface = "IFMSRPD0013", group = "01S", channel = "증권A", market = "STK" }
+A601X = { interface = "IFMSRPD0013", group = "01X", channel = "증권B", market = "KNX" }
+A602F = { interface = "IFMSRPD0041", group = "02F", channel = "파생A", market = "DRV" }
+A602S = { interface = "IFMSRPD0013", group = "02S", channel = "증권C", market = "STK" }
+A603F = { interface = "IFMSRPD0041", group = "03F", channel = "파생A", market = "DRV" }
+A603S = { interface = "IFMSRPD0013", group = "03S", channel = "증권C", market = "STK" }
+A604F = { interface = "IFMSRPD0041", group = "04F", channel = "파생A", market = "DRV" }
+A604S = { interface = "IFMSRPD0013", group = "04S", channel = "증권C", market = "STK" }
+A605F = { interface = "IFMSRPD0041", group = "05F", channel = "파생A", market = "DRV" }
+A606F = { interface = "IFMSRPD0041", group = "06F", channel = "파생A", market = "DRV" }
+A607F = { interface = "IFMSRPD0041", group = "07F", channel = "파생A", market = "DRV" }
+A608F = { interface = "IFMSRPD0041", group = "08F", channel = "파생A", market = "DRV" }
+A609F = { interface = "IFMSRPD0041", group = "09F", channel = "파생A", market = "DRV" }
+A610F = { interface = "IFMSRPD0041", group = "10F", channel = "파생A", market = "DRV" }
+A611F = { interface = "IFMSRPD0041", group = "11F", channel = "파생A", market = "DRV" }
+A612F = { interface = "IFMSRPD0041", group = "12F", channel = "파생A", market = "DRV" }
+A613F = { interface = "IFMSRPD0041", group = "13F", channel = "파생A", market = "DRV" }
+A614F = { interface = "IFMSRPD0041", group = "14F", channel = "파생B", market = "DRV" }
+A615F = { interface = "IFMSRPD0041", group = "15F", channel = "파생A", market = "DRV" }
+A616F = { interface = "IFMSRPD0041", group = "16F", channel = "파생A", market = "DRV" }
+A701B = { interface = "IFMSRPD0008", group = "01B", channel = "채권A", market = "BND" }
+A701E = { interface = "IFMSRPD0008", group = "01E", channel = "일반A", market = "ETS" }
+A701F = { interface = "IFMSRPD0008", group = "01F", channel = "파생A", market = "DRV" }
+A701G = { interface = "IFMSRPD0008", group = "01G", channel = "일반A", market = "CMD" }
+A701K = { interface = "IFMSRPD0008", group = "01K", channel = "채권A", market = "KTS" }
+A701M = { interface = "IFMSRPD0008", group = "01M", channel = "채권A", market = "SMB" }
+A701Q = { interface = "IFMSRPD0008", group = "01Q", channel = "증권B", market = "KSQ" }
+A701R = { interface = "IFMSRPD0008", group = "01R", channel = "채권A", market = "RPO" }
+A701S = { interface = "IFMSRPD0008", group = "01S", channel = "증권A", market = "STK" }
+A701X = { interface = "IFMSRPD0008", group = "01X", channel = "증권B", market = "KNX" }
+A702F = { interface = "IFMSRPD0008", group = "02F", channel = "파생A", market = "DRV" }
+A702S = { interface = "IFMSRPD0008", group = "02S", channel = "증권C", market = "STK" }
+A703F = { interface = "IFMSRPD0008", group = "03F", channel = "파생A", market = "DRV" }
+A703S = { interface = "IFMSRPD0008", group = "03S", channel = "증권C", market = "STK" }
+A704F = { interface = "IFMSRPD0008", group = "04F", channel = "파생A", market = "DRV" }
+A704S = { interface = "IFMSRPD0008", group = "04S", channel = "증권C", market = "STK" }
+A705F = { interface = "IFMSRPD0008", group = "05F", channel = "파생A", market = "DRV" }
+A706F = { interface = "IFMSRPD0008", group = "06F", channel = "파생A", market = "DRV" }
+A707F = { interface = "IFMSRPD0008", group = "07F", channel = "파생A", market = "DRV" }
+A708F = { interface = "IFMSRPD0008", group = "08F", channel = "파생A", market = "DRV" }
+A709F = { interface = "IFMSRPD0008", group = "09F", channel = "파생A", market = "DRV" }
+A710F = { interface = "IFMSRPD0008", group = "10F", channel = "파생A", market = "DRV" }
+A711F = { interface = "IFMSRPD0008", group = "11F", channel = "파생A", market = "DRV" }
+A712F = { interface = "IFMSRPD0008", group = "12F", channel = "파생A", market = "DRV" }
+A713F = { interface = "IFMSRPD0008", group = "13F", channel = "파생A", market = "DRV" }
+A714F = { interface = "IFMSRPD0008", group = "14F", channel = "파생B", market = "DRV" }
+A715F = { interface = "IFMSRPD0008", group = "15F", channel = "파생A", market = "DRV" }
+A716F = { interface = "IFMSRPD0008", group = "16F", channel = "파생A", market = "DRV" }
+A801Q = { interface = "IFMSRPD0018", group = "01Q", channel = "증권B", market = "KSQ" }
+A801S = { interface = "IFMSRPD0018", group = "01S", channel = "증권A", market = "STK" }
+A801X = { interface = "IFMSRPD0018", group = "01X", channel = "증권B", market = "KNX" }
+A802S = { interface = "IFMSRPD0018", group = "02S", channel = "증권C", market = "STK" }
+A803S = { interface = "IFMSRPD0018", group = "03S", channel = "증권C", market = "STK" }
+A804S = { interface = "IFMSRPD0018", group = "04S", channel = "증권C", market = "STK" }
+A901Q = { interface = "IFMSBTD0014", group = "01Q", channel = "증권B", market = "KSQ" }
+A901S = { interface = "IFMSBTD0014", group = "01S", channel = "증권A", market = "STK" }
+A901X = { interface = "IFMSBTD0014", group = "01X", channel = "증권B", market = "KNX" }
+AC01E = { interface = "IFMSSTD0013", group = "01E", channel = "일반A", market = "ETS" }
+B001Q = { interface = "IFMSRPD0056", group = "01Q", channel = "증권B", market = "KSQ" }
+B001S = { interface = "IFMSRPD0056", group = "01S", channel = "증권A", market = "STK" }
+B001X = { interface = "IFMSRPD0056", group = "01X", channel = "증권B", market = "KNX" }
+B201E = { interface = "IFMSRPD0055", group = "01E", channel = "일반A", market = "ETS" }
+B201F = { interface = "IFMSRPD0044", group = "01F", channel = "파생A", market = "DRV" }
+B201G = { interface = "IFMSRPD0050", group = "01G", channel = "일반A", market = "CMD" }
+B201X = { interface = "IFMSRPD0021", group = "01X", channel = "증권B", market = "KNX" }
+B202F = { interface = "IFMSRPD0044", group = "02F", channel = "파생A", market = "DRV" }
+B202S = { interface = "IFMSRPD0022", group = "02S", channel = "증권C", market = "STK" }
+B203F = { interface = "IFMSRPD0044", group = "03F", channel = "파생A", market = "DRV" }
+B204F = { interface = "IFMSRPD0045", group = "04F", channel = "파생A", market = "DRV" }
+B204S = { interface = "IFMSRPD0022", group = "04S", channel = "증권C", market = "STK" }
+B205F = { interface = "IFMSRPD0045", group = "05F", channel = "파생A", market = "DRV" }
+B206F = { interface = "IFMSRPD0044", group = "06F", channel = "파생A", market = "DRV" }
+B207F = { interface = "IFMSRPD0044", group = "07F", channel = "파생A", market = "DRV" }
+B208F = { interface = "IFMSRPD0044", group = "08F", channel = "파생A", market = "DRV" }
+B209F = { interface = "IFMSRPD0044", group = "09F", channel = "파생A", market = "DRV" }
+B210F = { interface = "IFMSRPD0044", group = "10F", channel = "파생A", market = "DRV" }
+B211F = { interface = "IFMSRPD0044", group = "11F", channel = "파생A", market = "DRV" }
+B212F = { interface = "IFMSRPD0044", group = "12F", channel = "파생A", market = "DRV" }
+B213F = { interface = "IFMSRPD0044", group = "13F", channel = "파생A", market = "DRV" }
+B214F = { interface = "IFMSRPD0044", group = "14F", channel = "파생B", market = "DRV" }
+B215F = { interface = "IFMSRPD0044", group = "15F", channel = "파생A", market = "DRV" }
+B216F = { interface = "IFMSRPD0044", group = "16F", channel = "파생A", market = "DRV" }
+B501Q = { interface = "IFMSSTD0007", group = "01Q", channel = "증권B", market = "KSQ" }
+B501S = { interface = "IFMSSTD0007", group = "01S", channel = "증권A", market = "STK" }
+B501X = { interface = "IFMSSTD0007", group = "01X", channel = "증권B", market = "KNX" }
+B601B = { interface = "IFMSRPD0023", group = "01B", channel = "채권A", market = "BND" }
+B601E = { interface = "IFMSRPD0051", group = "01E", channel = "일반A", market = "ETS" }
+B601F = { interface = "IFMSRPD0034", group = "01F", channel = "파생A", market = "DRV" }
+B601G = { interface = "IFMSRPD0046", group = "01G", channel = "일반A", market = "CMD" }
+B601K = { interface = "IFMSRPD0023", group = "01K", channel = "채권A", market = "KTS" }
+B601M = { interface = "IFMSRPD0024", group = "01M", channel = "채권A", market = "SMB" }
+B601Q = { interface = "IFMSRPD0002", group = "01Q", channel = "증권B", market = "KSQ" }
+B601R = { interface = "IFMSRPD0025", group = "01R", channel = "채권A", market = "RPO" }
+B601S = { interface = "IFMSRPD0002", group = "01S", channel = "증권A", market = "STK" }
+B601X = { interface = "IFMSRPD0002", group = "01X", channel = "증권B", market = "KNX" }
+B602F = { interface = "IFMSRPD0034", group = "02F", channel = "파생A", market = "DRV" }
+B603F = { interface = "IFMSRPD0034", group = "03F", channel = "파생A", market = "DRV" }
+B604F = { interface = "IFMSRPD0035", group = "04F", channel = "파생A", market = "DRV" }
+B605F = { interface = "IFMSRPD0035", group = "05F", channel = "파생A", market = "DRV" }
+B606F = { interface = "IFMSRPD0034", group = "06F", channel = "파생A", market = "DRV" }
+B607F = { interface = "IFMSRPD0034", group = "07F", channel = "파생A", market = "DRV" }
+B608F = { interface = "IFMSRPD0034", group = "08F", channel = "파생A", market = "DRV" }
+B609F = { interface = "IFMSRPD0034", group = "09F", channel = "파생A", market = "DRV" }
+B610F = { interface = "IFMSRPD0034", group = "10F", channel = "파생A", market = "DRV" }
+B611F = { interface = "IFMSRPD0034", group = "11F", channel = "파생A", market = "DRV" }
+B612F = { interface = "IFMSRPD0034", group = "12F", channel = "파생A", market = "DRV" }
+B613F = { interface = "IFMSRPD0034", group = "13F", channel = "파생A", market = "DRV" }
+B614F = { interface = "IFMSRPD0034", group = "14F", channel = "파생B", market = "DRV" }
+B615F = { interface = "IFMSRPD0034", group = "15F", channel = "파생A", market = "DRV" }
+B616F = { interface = "IFMSRPD0034", group = "16F", channel = "파생A", market = "DRV" }
+B702S = { interface = "IFMSRPD0003", group = "02S", channel = "증권C", market = "STK" }
+B703S = { interface = "IFMSRPD0003", group = "03S", channel = "증권C", market = "STK" }
+B704S = { interface = "IFMSRPD0003", group = "04S", channel = "증권C", market = "STK" }
+B801Q = { interface = "IFMSRPD0063", group = "01Q", channel = "증권B", market = "KSQ" }
+B801S = { interface = "IFMSRPD0063", group = "01S", channel = "증권A", market = "STK" }
+B801X = { interface = "IFMSRPD0063", group = "01X", channel = "증권B", market = "KNX" }
+B803S = { interface = "IFMSRPD0063", group = "03S", channel = "증권C", market = "STK" }
+B804S = { interface = "IFMSRPD0063", group = "04S", channel = "증권C", market = "STK" }
+B901Q = { interface = "IFMSSTD0006", group = "01Q", channel = "증권B", market = "KSQ" }
+B901S = { interface = "IFMSSTD0006", group = "01S", channel = "증권A", market = "STK" }
+B901X = { interface = "IFMSSTD0006", group = "01X", channel = "증권B", market = "KNX" }
+B902S = { interface = "IFMSSTD0006", group = "02S", channel = "증권C", market = "STK" }
+B903S = { interface = "IFMSSTD0006", group = "03S", channel = "증권C", market = "STK" }
+B904S = { interface = "IFMSSTD0006", group = "04S", channel = "증권C", market = "STK" }
+BN01B = { interface = "IFMSBTD0021", group = "01B", channel = "채권A", market = "BND" }
+C001Q = { interface = "IFMSSTD0001", group = "01Q", channel = "증권B", market = "KSQ" }
+C001S = { interface = "IFMSSTD0001", group = "01S", channel = "증권A", market = "STK" }
+C001X = { interface = "IFMSSTD0001", group = "01X", channel = "증권B", market = "KNX" }
+C101G = { interface = "IFMSSTD0003", group = "01G", channel = "일반A", market = "CMD" }
+C101Q = { interface = "IFMSSTD0003", group = "01Q", channel = "증권B", market = "KSQ" }
+C101S = { interface = "IFMSSTD0003", group = "01S", channel = "증권A", market = "STK" }
+C101X = { interface = "IFMSSTD0003", group = "01X", channel = "증권B", market = "KNX" }
+C102S = { interface = "IFMSSTD0003", group = "02S", channel = "증권C", market = "STK" }
+C103S = { interface = "IFMSSTD0003", group = "03S", channel = "증권C", market = "STK" }
+C104S = { interface = "IFMSSTD0003", group = "04S", channel = "증권C", market = "STK" }
+C301Q = { interface = "IFMSSTD0009", group = "01Q", channel = "증권B", market = "KSQ" }
+C301S = { interface = "IFMSSTD0009", group = "01S", channel = "증권A", market = "STK" }
+C401B = { interface = "IFMSRPD0067", group = "01B", channel = "채권A", market = "BND" }
+C401E = { interface = "IFMSRPD0061", group = "01E", channel = "일반A", market = "ETS" }
+C401F = { interface = "IFMSRPD0059", group = "01F", channel = "파생A", market = "DRV" }
+C401G = { interface = "IFMSRPD0060", group = "01G", channel = "일반A", market = "CMD" }
+C401Q = { interface = "IFMSRPD0057", group = "01Q", channel = "증권B", market = "KSQ" }
+C401R = { interface = "IFMSRPD0058", group = "01R", channel = "채권A", market = "RPO" }
+C401S = { interface = "IFMSRPD0057", group = "01S", channel = "증권A", market = "STK" }
+C401X = { interface = "IFMSRPD0057", group = "01X", channel = "증권B", market = "KNX" }
+C402F = { interface = "IFMSRPD0059", group = "02F", channel = "파생A", market = "DRV" }
+C402S = { interface = "IFMSRPD0057", group = "02S", channel = "증권C", market = "STK" }
+C403F = { interface = "IFMSRPD0059", group = "03F", channel = "파생A", market = "DRV" }
+C403S = { interface = "IFMSRPD0057", group = "03S", channel = "증권C", market = "STK" }
+C404F = { interface = "IFMSRPD0059", group = "04F", channel = "파생A", market = "DRV" }
+C404S = { interface = "IFMSRPD0057", group = "04S", channel = "증권C", market = "STK" }
+C405F = { interface = "IFMSRPD0059", group = "05F", channel = "파생A", market = "DRV" }
+C406F = { interface = "IFMSRPD0059", group = "06F", channel = "파생A", market = "DRV" }
+C407F = { interface = "IFMSRPD0059", group = "07F", channel = "파생A", market = "DRV" }
+C408F = { interface = "IFMSRPD0059", group = "08F", channel = "파생A", market = "DRV" }
+C409F = { interface = "IFMSRPD0059", group = "09F", channel = "파생A", market = "DRV" }
+C410F = { interface = "IFMSRPD0059", group = "10F", channel = "파생A", market = "DRV" }
+C411F = { interface = "IFMSRPD0059", group = "11F", channel = "파생A", market = "DRV" }
+C412F = { interface = "IFMSRPD0059", group = "12F", channel = "파생A", market = "DRV" }
+C413F = { interface = "IFMSRPD0059", group = "13F", channel = "파생A", market = "DRV" }
+C414F = { interface = "IFMSRPD0059", group = "14F", channel = "파생B", market = "DRV" }
+C415F = { interface = "IFMSRPD0059", group = "15F", channel = "파생A", market = "DRV" }
+C416F = { interface = "IFMSRPD0059", group = "16F", channel = "파생A", market = "DRV" }
+CA01Q = { interface = "IFMSBTD0002", group = "01Q", channel = "증권B", market = "KSQ" }
+CA01S = { interface = "IFMSBTD0002", group = "01S", channel = "증권A", market = "STK" }
+CB01R = { interface = "IFMSBTD0029", group = "01R", channel = "채권A", market = "RPO" }
+E900Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ" }
+E900S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK" }
+E900X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX" }
+E9909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS" }
+F000Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ" }
+F000S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK" }
+F000X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX" }
+F0909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS" }
+F901B = { interface = "IFMSBTD0020", group = "01B", channel = "채권A", market = "BND" }
+F901M = { interface = "IFMSBTD0020", group = "01M", channel = "채권A", market = "SMB" }
+FT000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "" }
+G001M = { interface = "IFMSRID0003", group = "01M", channel = "채권A", market = "SMB" }
+G300B = { interface = "IFMSBTD0018", group = "00B", channel = "채권A", market = "BND" }
+G701B = { interface = "IFMSRPD0029", group = "01B", channel = "채권A", market = "BND" }
+G701E = { interface = "IFMSRPD0053", group = "01E", channel = "일반A", market = "ETS" }
+G701F = { interface = "IFMSRPD0037", group = "01F", channel = "파생A", market = "DRV" }
+G701G = { interface = "IFMSRPD0048", group = "01G", channel = "일반A", market = "CMD" }
+G701K = { interface = "IFMSRPD0029", group = "01K", channel = "채권A", market = "KTS" }
+G701M = { interface = "IFMSRPD0030", group = "01M", channel = "채권A", market = "SMB" }
+G701R = { interface = "IFMSRPD0031", group = "01R", channel = "채권A", market = "RPO" }
+G702F = { interface = "IFMSRPD0037", group = "02F", channel = "파생A", market = "DRV" }
+G703F = { interface = "IFMSRPD0037", group = "03F", channel = "파생A", market = "DRV" }
+G704F = { interface = "IFMSRPD0038", group = "04F", channel = "파생A", market = "DRV" }
+G705F = { interface = "IFMSRPD0038", group = "05F", channel = "파생A", market = "DRV" }
+G706F = { interface = "IFMSRPD0037", group = "06F", channel = "파생A", market = "DRV" }
+G707F = { interface = "IFMSRPD0037", group = "07F", channel = "파생A", market = "DRV" }
+G708F = { interface = "IFMSRPD0037", group = "08F", channel = "파생A", market = "DRV" }
+G709F = { interface = "IFMSRPD0037", group = "09F", channel = "파생A", market = "DRV" }
+G710F = { interface = "IFMSRPD0037", group = "10F", channel = "파생A", market = "DRV" }
+G711F = { interface = "IFMSRPD0037", group = "11F", channel = "파생A", market = "DRV" }
+G712F = { interface = "IFMSRPD0037", group = "12F", channel = "파생A", market = "DRV" }
+G713F = { interface = "IFMSRPD0037", group = "13F", channel = "파생A", market = "DRV" }
+G714F = { interface = "IFMSRPD0037", group = "14F", channel = "파생B", market = "DRV" }
+G715F = { interface = "IFMSRPD0037", group = "15F", channel = "파생A", market = "DRV" }
+G716F = { interface = "IFMSRPD0037", group = "16F", channel = "파생A", market = "DRV" }
+H101F = { interface = "IFMSSTD0005", group = "01F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H102F = { interface = "IFMSSTD0005", group = "02F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H103F = { interface = "IFMSSTD0005", group = "03F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H104F = { interface = "IFMSSTD0005", group = "04F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H105F = { interface = "IFMSSTD0005", group = "05F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H106F = { interface = "IFMSSTD0005", group = "06F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H107F = { interface = "IFMSSTD0005", group = "07F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H108F = { interface = "IFMSSTD0005", group = "08F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H109F = { interface = "IFMSSTD0005", group = "09F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H110F = { interface = "IFMSSTD0005", group = "10F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H111F = { interface = "IFMSSTD0005", group = "11F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H112F = { interface = "IFMSSTD0005", group = "12F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H113F = { interface = "IFMSSTD0005", group = "13F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H114F = { interface = "IFMSSTD0005", group = "14F", channel = "파생B", market = "DRV", also = ["IFMSRID0007"] }
+H115F = { interface = "IFMSSTD0005", group = "15F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H116F = { interface = "IFMSSTD0005", group = "16F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
+H201F = { interface = "IFMSRID0008", group = "01F", channel = "파생A", market = "DRV" }
+H202F = { interface = "IFMSRID0008", group = "02F", channel = "파생A", market = "DRV" }
+H203F = { interface = "IFMSRID0008", group = "03F", channel = "파생A", market = "DRV" }
+H204F = { interface = "IFMSRID0008", group = "04F", channel = "파생A", market = "DRV" }
+H205F = { interface = "IFMSRID0008", group = "05F", channel = "파생A", market = "DRV" }
+H206F = { interface = "IFMSRID0008", group = "06F", channel = "파생A", market = "DRV" }
+H207F = { interface = "IFMSRID0008", group = "07F", channel = "파생A", market = "DRV" }
+H208F = { interface = "IFMSRID0008", group = "08F", channel = "파생A", market = "DRV" }
+H209F = { interface = "IFMSRID0008", group = "09F", channel = "파생A", market = "DRV" }
+H210F = { interface = "IFMSRID0008", group = "10F", channel = "파생A", market = "DRV" }
+H211F = { interface = "IFMSRID0008", group = "11F", channel = "파생A", market = "DRV" }
+H212F = { interface = "IFMSRID0008", group = "12F", channel = "파생A", market = "DRV" }
+H213F = { interface = "IFMSRID0008", group = "13F", channel = "파생A", market = "DRV" }
+H214F = { interface = "IFMSRID0008", group = "14F", channel = "파생B", market = "DRV" }
+H215F = { interface = "IFMSRID0008", group = "15F", channel = "파생A", market = "DRV" }
+H216F = { interface = "IFMSRID0008", group = "16F", channel = "파생A", market = "DRV" }
+H301F = { interface = "IFMSRID0009", group = "01F", channel = "파생A", market = "DRV" }
+H302F = { interface = "IFMSRID0009", group = "02F", channel = "파생A", market = "DRV" }
+H304F = { interface = "IFMSRID0009", group = "04F", channel = "파생A", market = "DRV" }
+H306F = { interface = "IFMSRID0009", group = "06F", channel = "파생A", market = "DRV" }
+H308F = { interface = "IFMSRID0009", group = "08F", channel = "파생A", market = "DRV" }
+H309F = { interface = "IFMSRID0009", group = "09F", channel = "파생A", market = "DRV" }
+H310F = { interface = "IFMSRID0009", group = "10F", channel = "파생A", market = "DRV" }
+H311F = { interface = "IFMSRID0009", group = "11F", channel = "파생A", market = "DRV" }
+H313F = { interface = "IFMSRID0009", group = "13F", channel = "파생A", market = "DRV" }
+H314F = { interface = "IFMSRID0009", group = "14F", channel = "파생B", market = "DRV" }
+H404F = { interface = "IFMSBTD0025", group = "04F", channel = "파생A", market = "DRV" }
+H405F = { interface = "IFMSBTD0025", group = "05F", channel = "파생A", market = "DRV" }
+H506F = { interface = "IFMSRID0013", group = "06F", channel = "파생A", market = "DRV" }
+H599F = { interface = "IFMSRID0013", group = "99F", channel = "파생A", market = "DRV" }
+H606F = { interface = "IFMSBTD0026", group = "06F", channel = "파생A", market = "DRV" }
+HA06F = { interface = "IFMSRID0041", group = "06F", channel = "파생A", market = "DRV" }
+HE000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "" }
+I2000 = { interface = "IFMSRPD0001", group = "000", channel = "ALL", market = "" }
+I501Q = { interface = "IFMSBTD0009", group = "01Q", channel = "증권B", market = "KSQ" }
+I501S = { interface = "IFMSBTD0009", group = "01S", channel = "증권A", market = "STK" }
+I501X = { interface = "IFMSBTD0009", group = "01X", channel = "증권B", market = "KNX" }
+I503S = { interface = "IFMSBTD0009", group = "03S", channel = "증권C", market = "STK" }
+I504S = { interface = "IFMSBTD0009", group = "04S", channel = "증권C", market = "STK" }
+I601B = { interface = "IFMSBTD0010", group = "01B", channel = "채권A", market = "BND" }
+I601K = { interface = "IFMSBTD0010", group = "01K", channel = "채권A", market = "KTS" }
+I601M = { interface = "IFMSBTD0010", group = "01M", channel = "채권A", market = "SMB" }
+I601Q = { interface = "IFMSBTD0010", group = "01Q", channel = "증권B", market = "KSQ" }
+I601R = { interface = "IFMSBTD0010", group = "01R", channel = "채권A", market = "RPO" }
+I601S = { interface = "IFMSBTD0010", group = "01S", channel = "증권A", market = "STK" }
+I601X = { interface = "IFMSBTD0010", group = "01X", channel = "증권B", market = "KNX" }
+I602S = { interface = "IFMSBTD0010", group = "02S", channel = "증권C", market = "STK" }
+I603S = { interface = "IFMSBTD0010", group = "03S", channel = "증권C", market = "STK" }
+I604S = { interface = "IFMSBTD0010", group = "04S", channel = "증권C", market = "STK" }
+I701Q = { interface = "IFMSBTD0011", group = "01Q", channel = "증권B", market = "KSQ" }
+I701S = { interface = "IFMSBTD0011", group = "01S", channel = "증권A", market = "STK" }
+I701X = { interface = "IFMSBTD0011", group = "01X", channel = "증권B", market = "KNX" }
+I702S = { interface = "IFMSBTD0011", group = "02S", channel = "증권C", market = "STK" }
+I703S = { interface = "IFMSBTD0011", group = "03S", channel = "증권C", market = "STK" }
+I704S = { interface = "IFMSBTD0011", group = "04S", channel = "증권C", market = "STK" }
+I801Q = { interface = "IFMSSTD0012", group = "01Q", channel = "증권B", market = "KSQ" }
+I801S = { interface = "IFMSSTD0012", group = "01S", channel = "증권A", market = "STK" }
+I803S = { interface = "IFMSSTD0012", group = "03S", channel = "증권C", market = "STK" }
+I804S = { interface = "IFMSSTD0012", group = "04S", channel = "증권C", market = "STK" }
+IC01G = { interface = "IFMSSTD0004", group = "01G", channel = "일반A", market = "CMD" }
+IC02S = { interface = "IFMSSTD0004", group = "02S", channel = "증권C", market = "STK" }
+IC03S = { interface = "IFMSSTD0004", group = "03S", channel = "증권C", market = "STK" }
+IC04S = { interface = "IFMSSTD0004", group = "04S", channel = "증권C", market = "STK" }
+ID03F = { interface = "IFMSRID0010", group = "03F", channel = "파생A", market = "DRV" }
+ID05F = { interface = "IFMSRID0010", group = "05F", channel = "파생A", market = "DRV" }
+ID07F = { interface = "IFMSRID0010", group = "07F", channel = "파생A", market = "DRV" }
+ID12F = { interface = "IFMSRID0010", group = "12F", channel = "파생A", market = "DRV" }
+ID15F = { interface = "IFMSRID0010", group = "15F", channel = "파생A", market = "DRV" }
+ID16F = { interface = "IFMSRID0010", group = "16F", channel = "파생A", market = "DRV" }
+IE01Q = { interface = "IFMSRPD0066", group = "01Q", channel = "증권B", market = "KSQ" }
+IE01S = { interface = "IFMSRPD0066", group = "01S", channel = "증권A", market = "STK" }
+IE03S = { interface = "IFMSRPD0066", group = "03S", channel = "증권C", market = "STK" }
+IE04S = { interface = "IFMSRPD0066", group = "04S", channel = "증권C", market = "STK" }
+IF01F = { interface = "IFMSRPD0068", group = "01F", channel = "파생A", market = "DRV" }
+IF01Q = { interface = "IFMSRPD0068", group = "01Q", channel = "증권B", market = "KSQ" }
+IF01S = { interface = "IFMSRPD0068", group = "01S", channel = "증권A", market = "STK" }
+IF02F = { interface = "IFMSRPD0068", group = "02F", channel = "파생A", market = "DRV" }
+IF02S = { interface = "IFMSRPD0068", group = "02S", channel = "증권C", market = "STK" }
+IF03F = { interface = "IFMSRPD0068", group = "03F", channel = "파생A", market = "DRV" }
+IF03S = { interface = "IFMSRPD0068", group = "03S", channel = "증권C", market = "STK" }
+IF04F = { interface = "IFMSRPD0068", group = "04F", channel = "파생A", market = "DRV" }
+IF04S = { interface = "IFMSRPD0068", group = "04S", channel = "증권C", market = "STK" }
+IF05F = { interface = "IFMSRPD0068", group = "05F", channel = "파생A", market = "DRV" }
+IF06F = { interface = "IFMSRPD0068", group = "06F", channel = "파생A", market = "DRV" }
+IF07F = { interface = "IFMSRPD0068", group = "07F", channel = "파생A", market = "DRV" }
+IF08F = { interface = "IFMSRPD0068", group = "08F", channel = "파생A", market = "DRV" }
+IF09F = { interface = "IFMSRPD0068", group = "09F", channel = "파생A", market = "DRV" }
+IF10F = { interface = "IFMSRPD0068", group = "10F", channel = "파생A", market = "DRV" }
+IF11F = { interface = "IFMSRPD0068", group = "11F", channel = "파생A", market = "DRV" }
+IF12F = { interface = "IFMSRPD0068", group = "12F", channel = "파생A", market = "DRV" }
+IF13F = { interface = "IFMSRPD0068", group = "13F", channel = "파생A", market = "DRV" }
+IF14F = { interface = "IFMSRPD0068", group = "14F", channel = "파생B", market = "DRV" }
+IF15F = { interface = "IFMSRPD0068", group = "15F", channel = "파생A", market = "DRV" }
+IF16F = { interface = "IFMSRPD0068", group = "16F", channel = "파생A", market = "DRV" }
+J001Q = { interface = "IFMSSTD0010", group = "01Q", channel = "증권B", market = "KSQ" }
+J001S = { interface = "IFMSSTD0010", group = "01S", channel = "증권A", market = "STK" }
+J9077 = { interface = "IFMSRID0038", group = "077", channel = "채권A", market = "BND" }
+JA077 = { interface = "IFMSRID0039", group = "077", channel = "채권A", market = "BND" }
+JB077 = { interface = "IFMSRID0040", group = "077", channel = "채권A", market = "BND" }
+LK000 = { interface = "IFNDRCY0001", group = "000", channel = "", market = "" }
+M200G = { interface = "IFMSRID0035", group = "00G", channel = "일반A", market = "CMD", also = ["IFMSRID0036"] }
+M401B = { interface = "IFMSRPD0019", group = "01B", channel = "채권A", market = "BND" }
+M401E = { interface = "IFMSRPD0019", group = "01E", channel = "일반A", market = "ETS" }
+M401F = { interface = "IFMSRPD0019", group = "01F", channel = "파생A", market = "DRV" }
+M401G = { interface = "IFMSRPD0019", group = "01G", channel = "일반A", market = "CMD" }
+M401K = { interface = "IFMSRPD0019", group = "01K", channel = "채권A", market = "KTS" }
+M401M = { interface = "IFMSRPD0019", group = "01M", channel = "채권A", market = "SMB" }
+M401Q = { interface = "IFMSRPD0019", group = "01Q", channel = "증권B", market = "KSQ" }
+M401R = { interface = "IFMSRPD0019", group = "01R", channel = "채권A", market = "RPO" }
+M401S = { interface = "IFMSRPD0019", group = "01S", channel = "증권A", market = "STK" }
+M401X = { interface = "IFMSRPD0019", group = "01X", channel = "증권B", market = "KNX" }
+M402F = { interface = "IFMSRPD0019", group = "02F", channel = "파생A", market = "DRV" }
+M402S = { interface = "IFMSRPD0019", group = "02S", channel = "증권C", market = "STK" }
+M403F = { interface = "IFMSRPD0019", group = "03F", channel = "파생A", market = "DRV" }
+M403S = { interface = "IFMSRPD0019", group = "03S", channel = "증권C", market = "STK" }
+M404F = { interface = "IFMSRPD0019", group = "04F", channel = "파생A", market = "DRV" }
+M404S = { interface = "IFMSRPD0019", group = "04S", channel = "증권C", market = "STK" }
+M405F = { interface = "IFMSRPD0019", group = "05F", channel = "파생A", market = "DRV" }
+M406F = { interface = "IFMSRPD0019", group = "06F", channel = "파생A", market = "DRV" }
+M407F = { interface = "IFMSRPD0019", group = "07F", channel = "파생A", market = "DRV" }
+M408F = { interface = "IFMSRPD0019", group = "08F", channel = "파생A", market = "DRV" }
+M409F = { interface = "IFMSRPD0019", group = "09F", channel = "파생A", market = "DRV" }
+M410F = { interface = "IFMSRPD0019", group = "10F", channel = "파생A", market = "DRV" }
+M411F = { interface = "IFMSRPD0019", group = "11F", channel = "파생A", market = "DRV" }
+M412F = { interface = "IFMSRPD0019", group = "12F", channel = "파생A", market = "DRV" }
+M413F = { interface = "IFMSRPD0019", group = "13F", channel = "파생A", market = "DRV" }
+M414F = { interface = "IFMSRPD0019", group = "14F", channel = "파생B", market = "DRV" }
+M415F = { interface = "IFMSRPD0019", group = "15F", channel = "파생A", market = "DRV" }
+M416F = { interface = "IFMSRPD0019", group = "16F", channel = "파생A", market = "DRV" }
+M502S = { interface = "IFMSRID0002", group = "02S", channel = "증권C", market = "STK" }
+M602S = { interface = "IFMSBTD0006", group = "02S", channel = "증권C", market = "STK" }
+M701F = { interface = "IFMSRPD0064", group = "01F", channel = "파생A", market = "DRV" }
+M703F = { interface = "IFMSRPD0064", group = "03F", channel = "파생A", market = "DRV" }
+M706F = { interface = "IFMSRPD0064", group = "06F", channel = "파생A", market = "DRV" }
+M711F = { interface = "IFMSRPD0064", group = "11F", channel = "파생A", market = "DRV" }
+M716F = { interface = "IFMSRPD0064", group = "16F", channel = "파생A", market = "DRV" }
+M900Q = { interface = "IFMSBTD0012", group = "00Q", channel = "증권B", market = "KSQ" }
+M900S = { interface = "IFMSBTD0012", group = "00S", channel = "증권A", market = "STK" }
+M900X = { interface = "IFMSBTD0012", group = "00X", channel = "증권B", market = "KNX" }
+N703F = { interface = "IFMSRID0012", group = "03F", channel = "파생A", market = "DRV" }
+N705F = { interface = "IFMSRID0012", group = "05F", channel = "파생A", market = "DRV" }
+N707F = { interface = "IFMSRID0012", group = "07F", channel = "파생A", market = "DRV" }
+N712F = { interface = "IFMSRID0012", group = "12F", channel = "파생A", market = "DRV" }
+N715F = { interface = "IFMSRID0012", group = "15F", channel = "파생A", market = "DRV" }
+N716F = { interface = "IFMSRID0012", group = "16F", channel = "파생A", market = "DRV" }
+O401Q = { interface = "IFMSRID0001", group = "01Q", channel = "증권B", market = "KSQ" }
+O401S = { interface = "IFMSRID0001", group = "01S", channel = "증권A", market = "STK" }
+O401X = { interface = "IFMSRID0001", group = "01X", channel = "증권B", market = "KNX" }
+O402S = { interface = "IFMSRID0001", group = "02S", channel = "증권C", market = "STK" }
+O403S = { interface = "IFMSRID0001", group = "03S", channel = "증권C", market = "STK" }
+O404S = { interface = "IFMSRID0001", group = "04S", channel = "증권C", market = "STK" }
+O601F = { interface = "IFMSRPD0017", group = "01F", channel = "파생A", market = "DRV" }
+O601Q = { interface = "IFMSRPD0017", group = "01Q", channel = "증권B", market = "KSQ" }
+O601S = { interface = "IFMSRPD0017", group = "01S", channel = "증권A", market = "STK" }
+O601X = { interface = "IFMSRPD0017", group = "01X", channel = "증권B", market = "KNX" }
+O602F = { interface = "IFMSRPD0017", group = "02F", channel = "파생A", market = "DRV" }
+O603F = { interface = "IFMSRPD0017", group = "03F", channel = "파생A", market = "DRV" }
+O603S = { interface = "IFMSRPD0017", group = "03S", channel = "증권C", market = "STK" }
+O604F = { interface = "IFMSRPD0017", group = "04F", channel = "파생A", market = "DRV" }
+O604S = { interface = "IFMSRPD0017", group = "04S", channel = "증권C", market = "STK" }
+O605F = { interface = "IFMSRPD0017", group = "05F", channel = "파생A", market = "DRV" }
+O606F = { interface = "IFMSRPD0017", group = "06F", channel = "파생A", market = "DRV" }
+O607F = { interface = "IFMSRPD0017", group = "07F", channel = "파생A", market = "DRV" }
+O608F = { interface = "IFMSRPD0017", group = "08F", channel = "파생A", market = "DRV" }
+O609F = { interface = "IFMSRPD0017", group = "09F", channel = "파생A", market = "DRV" }
+O610F = { interface = "IFMSRPD0017", group = "10F", channel = "파생A", market = "DRV" }
+O611F = { interface = "IFMSRPD0017", group = "11F", channel = "파생A", market = "DRV" }
+O612F = { interface = "IFMSRPD0017", group = "12F", channel = "파생A", market = "DRV" }
+O613F = { interface = "IFMSRPD0017", group = "13F", channel = "파생A", market = "DRV" }
+O614F = { interface = "IFMSRPD0017", group = "14F", channel = "파생B", market = "DRV" }
+O615F = { interface = "IFMSRPD0017", group = "15F", channel = "파생A", market = "DRV" }
+O616F = { interface = "IFMSRPD0017", group = "16F", channel = "파생A", market = "DRV" }
+OA01B = { interface = "IFMSRPD0026", group = "01B", channel = "채권A", market = "BND" }
+OA01M = { interface = "IFMSRPD0026", group = "01M", channel = "채권A", market = "SMB" }
+P001Q = { interface = "IFMSSTD0008", group = "01Q", channel = "증권B", market = "KSQ" }
+P001S = { interface = "IFMSSTD0008", group = "01S", channel = "증권A", market = "STK" }
+P103F = { interface = "IFMSRID0011", group = "03F", channel = "파생A", market = "DRV" }
+P112F = { interface = "IFMSRID0011", group = "12F", channel = "파생A", market = "DRV" }
+P115F = { interface = "IFMSRID0011", group = "15F", channel = "파생A", market = "DRV" }
+P116F = { interface = "IFMSRID0011", group = "16F", channel = "파생A", market = "DRV" }
+P200Q = { interface = "IFMSBTD0003", group = "00Q", channel = "증권B", market = "KSQ" }
+P200S = { interface = "IFMSBTD0003", group = "00S", channel = "증권A", market = "STK" }
+P401B = { interface = "IFMSSTD0002", group = "01B", channel = "채권A", market = "BND" }
+P401K = { interface = "IFMSSTD0002", group = "01K", channel = "채권A", market = "KTS" }
+P401M = { interface = "IFMSSTD0002", group = "01M", channel = "채권A", market = "SMB" }
+PA01K = { interface = "IFMSRID0004", group = "01K", channel = "채권A", market = "KTS" }
+PB01K = { interface = "IFMSRID0005", group = "01K", channel = "채권A", market = "KTS" }
+PC01K = { interface = "IFMSRID0006", group = "01K", channel = "채권A", market = "KTS" }
+Q001X = { interface = "IFMSBTD0015", group = "01X", channel = "증권B", market = "KNX" }
+Q201F = { interface = "IFMSRPD0042", group = "01F", channel = "파생A", market = "DRV" }
+Q202F = { interface = "IFMSRPD0042", group = "02F", channel = "파생A", market = "DRV" }
+Q203F = { interface = "IFMSRPD0042", group = "03F", channel = "파생A", market = "DRV" }
+Q204F = { interface = "IFMSRPD0042", group = "04F", channel = "파생A", market = "DRV" }
+Q206F = { interface = "IFMSRPD0042", group = "06F", channel = "파생A", market = "DRV" }
+Q208F = { interface = "IFMSRPD0042", group = "08F", channel = "파생A", market = "DRV" }
+Q209F = { interface = "IFMSRPD0042", group = "09F", channel = "파생A", market = "DRV" }
+Q210F = { interface = "IFMSRPD0042", group = "10F", channel = "파생A", market = "DRV" }
+Q211F = { interface = "IFMSRPD0042", group = "11F", channel = "파생A", market = "DRV" }
+Q212F = { interface = "IFMSRPD0042", group = "12F", channel = "파생A", market = "DRV" }
+Q216F = { interface = "IFMSRPD0042", group = "16F", channel = "파생A", market = "DRV" }
+R101E = { interface = "IFMSRPD0054", group = "01E", channel = "일반A", market = "ETS" }
+R101F = { interface = "IFMSRPD0039", group = "01F", channel = "파생A", market = "DRV" }
+R101G = { interface = "IFMSRPD0049", group = "01G", channel = "일반A", market = "CMD" }
+R102F = { interface = "IFMSRPD0039", group = "02F", channel = "파생A", market = "DRV" }
+R103F = { interface = "IFMSRPD0039", group = "03F", channel = "파생A", market = "DRV" }
+R104F = { interface = "IFMSRPD0040", group = "04F", channel = "파생A", market = "DRV" }
+R105F = { interface = "IFMSRPD0040", group = "05F", channel = "파생A", market = "DRV" }
+R106F = { interface = "IFMSRPD0039", group = "06F", channel = "파생A", market = "DRV" }
+R107F = { interface = "IFMSRPD0039", group = "07F", channel = "파생A", market = "DRV" }
+R108F = { interface = "IFMSRPD0039", group = "08F", channel = "파생A", market = "DRV" }
+R109F = { interface = "IFMSRPD0039", group = "09F", channel = "파생A", market = "DRV" }
+R110F = { interface = "IFMSRPD0039", group = "10F", channel = "파생A", market = "DRV" }
+R111F = { interface = "IFMSRPD0039", group = "11F", channel = "파생A", market = "DRV" }
+R112F = { interface = "IFMSRPD0039", group = "12F", channel = "파생A", market = "DRV" }
+R113F = { interface = "IFMSRPD0039", group = "13F", channel = "파생A", market = "DRV" }
+R114F = { interface = "IFMSRPD0039", group = "14F", channel = "파생B", market = "DRV" }
+R115F = { interface = "IFMSRPD0039", group = "15F", channel = "파생A", market = "DRV" }
+R116F = { interface = "IFMSRPD0039", group = "16F", channel = "파생A", market = "DRV" }
+R301B = { interface = "IFMSRPD0020", group = "01B", channel = "채권A", market = "BND" }
+R301K = { interface = "IFMSRPD0020", group = "01K", channel = "채권A", market = "KTS" }
+R301M = { interface = "IFMSRPD0020", group = "01M", channel = "채권A", market = "SMB" }
+R301Q = { interface = "IFMSRPD0020", group = "01Q", channel = "증권B", market = "KSQ" }
+R301R = { interface = "IFMSRPD0020", group = "01R", channel = "채권A", market = "RPO" }
+R301S = { interface = "IFMSRPD0020", group = "01S", channel = "증권A", market = "STK" }
+R301X = { interface = "IFMSRPD0020", group = "01X", channel = "증권B", market = "KNX" }
+R302S = { interface = "IFMSRPD0020", group = "02S", channel = "증권C", market = "STK" }
+R303S = { interface = "IFMSRPD0020", group = "03S", channel = "증권C", market = "STK" }
+R304S = { interface = "IFMSRPD0020", group = "04S", channel = "증권C", market = "STK" }
+R401B = { interface = "IFMSRPD0033", group = "01B", channel = "채권A", market = "BND" }
+R801Q = { interface = "IFMSRPD0014", group = "01Q", channel = "증권B", market = "KSQ" }
+R801S = { interface = "IFMSRPD0014", group = "01S", channel = "증권A", market = "STK" }
+R803S = { interface = "IFMSRPD0014", group = "03S", channel = "증권C", market = "STK" }
+R804S = { interface = "IFMSRPD0014", group = "04S", channel = "증권C", market = "STK" }
+S001R = { interface = "IFMSBTD0019", group = "01R", channel = "채권A", market = "RPO" }
+V101F = { interface = "IFMSRPD0043", group = "01F", channel = "파생A", market = "DRV" }
+V102F = { interface = "IFMSRPD0043", group = "02F", channel = "파생A", market = "DRV" }
+V103F = { interface = "IFMSRPD0043", group = "03F", channel = "파생A", market = "DRV" }
+V104F = { interface = "IFMSRPD0043", group = "04F", channel = "파생A", market = "DRV" }
+V105F = { interface = "IFMSRPD0043", group = "05F", channel = "파생A", market = "DRV" }
+V108F = { interface = "IFMSRPD0043", group = "08F", channel = "파생A", market = "DRV" }
+V109F = { interface = "IFMSRPD0043", group = "09F", channel = "파생A", market = "DRV" }
+V111F = { interface = "IFMSRPD0043", group = "11F", channel = "파생A", market = "DRV" }
+V112F = { interface = "IFMSRPD0043", group = "12F", channel = "파생A", market = "DRV" }
+V113F = { interface = "IFMSRPD0043", group = "13F", channel = "파생A", market = "DRV" }
+V115F = { interface = "IFMSRPD0043", group = "15F", channel = "파생A", market = "DRV" }
+V116F = { interface = "IFMSRPD0043", group = "16F", channel = "파생A", market = "DRV" }
+V600S = { interface = "IFMSBTD0013", group = "00S", channel = "증권C", market = "STK" }
+X100F = { interface = "IFMSBTD0024", group = "00F", channel = "파생B", market = "DRV" }
+X304S = { interface = "IFMSBTD0007", group = "04S", channel = "증권C", market = "STK" }
+X804S = { interface = "IFMSBTD0008", group = "04S", channel = "증권C", market = "STK" }
+
+# **같은 trcode 가 회선마다 다른 전문으로 온다.** 5바이트만 보고는 못 고른다 —
+# 예: B201S 는 증권A 회선에서 685B, 주식파생 기초자산 회선에서 136B.
+# 이 코드들은 [code] 에 없다. 어느 회선에서 받았는지를 같이 넘겨야 한다.
+[code_by_channel]
+B201Q = { group = "01Q", by = { "주식파생" = "IFMSRPD0062", "증권B" = "IFMSRPD0021" } }
+B201S = { group = "01S", by = { "주식파생" = "IFMSRPD0062", "증권A" = "IFMSRPD0021" } }
+B203S = { group = "03S", by = { "주식파생" = "IFMSRPD0062", "증권C" = "IFMSRPD0022" } }

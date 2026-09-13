@@ -1,1 +1,6 @@
 /target
+
+# 실제 배포 설정. 회선 배정(멀티캐스트 그룹IP·포트)이 들어가므로 공개 레포에 올리지 않는다.
+# 템플릿은 conf/krx.example.toml 이고 그건 커밋한다.
+conf/krx.toml
+conf/isin_allow.txt
