@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "jeed-shm"
+version = "0.1.0"
+dependencies = [
+ "jeed-wire",
+]
+
+[[package]]
 name = "jeed-wire"
 version = "0.1.0"

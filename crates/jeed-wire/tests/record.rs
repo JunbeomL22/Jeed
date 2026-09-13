@@ -78,8 +78,11 @@ fn in_place_borrow_requires_alignment() {
     let aligned = WireRecord::ref_from_bytes(rec.as_bytes()).expect("record is 64-byte aligned");
     assert_eq!(aligned.header.isin, *b"KR4A01690002");
 
+    // The first offset into `buf` that lands eight bytes past a 64-byte
+    // boundary, whatever the allocator handed us.
     let mut buf = vec![0u8; WIRE_RECORD_LEN + WIRE_ALIGN];
-    let off = WIRE_ALIGN - (buf.as_ptr() as usize % WIRE_ALIGN) + 8; // deliberately off
+    let off = (8 + WIRE_ALIGN - (buf.as_ptr() as usize % WIRE_ALIGN)) % WIRE_ALIGN;
+    assert_eq!((buf.as_ptr() as usize + off) % WIRE_ALIGN, 8);
     buf[off..off + WIRE_RECORD_LEN].copy_from_slice(rec.as_bytes());
     assert_eq!(
         WireRecord::ref_from_bytes(&buf[off..off + WIRE_RECORD_LEN]),

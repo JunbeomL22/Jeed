@@ -1,0 +1,15 @@
+[package]
+name = "jeed-shm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared-memory ring carrying jeed-wire records between the feed handler and its consumer"
+
+[dependencies]
+# Only the ABI. The six Win32 entry points this crate needs are declared
+# inline (`mapping.rs`) rather than pulled from `windows-sys`: the consumer
+# links this crate too, and a binding crate is a lot of surface to inherit
+# for `CreateFileMappingW` and five friends.
+jeed-wire = { path = "../jeed-wire" }

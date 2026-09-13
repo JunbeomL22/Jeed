@@ -304,8 +304,10 @@ spin 이냐 block 이냐가 실제 동작이다.
 - [x] **`jeed-wire`** (2026-09-13) — types/error/kind/header/payload/record/segment, 의존성 0,
       테스트 51건, clippy·rustdoc 무경고. `deepsize` 와 `VenueMismatch`(어댑터용)는 안 가져왔다.
       레이아웃 단언(576B / align 64 / 암묵 패딩 0 / 필드 오프셋)이 컴파일 타임과 테스트 양쪽에 있다
-- [ ] **`jeed-shm`** — Windows named mapping(`CreateFileMapping(INVALID_HANDLE_VALUE,…)` +
-      `MapViewOfFile`, 페이지파일 백업) SPSC 링. producer/consumer 양쪽. §3·§15
+- [x] **`jeed-shm`** (2026-09-13) — Windows named mapping(`CreateFileMapping(INVALID_HANDLE_VALUE,…)` +
+      `MapViewOfFile`, 페이지파일 백업) 링. producer/consumer 양쪽. 테스트 44건, clippy·rustdoc 무경고.
+      의존성은 `jeed-wire` 하나 — Win32 진입점 6개를 직접 선언했다(`windows-sys` 를 소비자에게
+      물려주지 않으려고). 설계 결정 두 개는 아래 §11
 - [ ] **trcode 테이블 생성기** — 인터페이스목록 v1.341 xlsx → `krx_trcodes.toml`
       (trcode → 인터페이스·길이·상품군). **IP·포트는 생성하지 않는다** — 회선 배정이라 사람이 적는다
 - [ ] **`jeed-krx` 디코더 + 출력 타입 교체** — `SnapshotData` → `WireRecord`.
@@ -321,11 +323,12 @@ spin 이냐 block 이냐가 실제 동작이다.
 
 ## 7. feed_handler.md §15 미구현
 
-- [ ] **shm 링 구현** (Windows named mapping, SPSC ×2) ← Jeed 의 실제 출구. 아직 없음
+- [x] **shm 링 구현** (2026-09-13, `crates/jeed-shm`) ← Jeed 의 실제 출구.
+      SPSC ×2 는 "세그먼트 2개" 가 아니라 "소비자가 각자 `RingConsumer` 로 붙는다" 로 풀렸다 (§11)
 - [ ] **피드 사망 시 기존 포지션 청산을 허용할지** (§9). 시장이 안 보이는 상태의 청산이
       더 위험할 수 있다. 판단은 소비자 쪽이지만 `STALE`·하트비트 신호는 Jeed 가 낸다
 - [ ] **KRX 일련번호 전환일 특정** — 우리 회선에서 정보분배일련번호가 채워지기 시작한 날.
-      04-01 까지 100% 공백, 05-21 이후 전부 채워짐. 04-02~05-20 캡처 부재로 그 사이로만 좁혀짐 (§11②).
+      04-01 까지 100% 공백, 05-21 이후 전부 채워짐. 04-02~05-20 캡처 부재로 그 사이로만 좁혀짐 (feed_handler §11②).
       표준서 비고의 "파생시장 시세 송신 port 분리 및 **종목별 보드별 일련번호 제공**" 이 그 변경으로 보인다
 - [ ] **DB 전체 유실률 정량화** (05-21 이후 ~40 일) → 백테스트 신뢰구간.
       20260731 표본에서 (종목,보드)별 12.9% / 12.6% / 2.5% 누락, 중복 0, 20 건 연속 패턴 →
@@ -460,8 +463,72 @@ G711F  KR4D056869S2 스프레드   상한 000000.00  하한 000000.00   ← 제�
 - **`recv_from`(WouldBlock) 실측 비용.** hot 소켓 개수 상한이 여기서 나온다. 추정만 있고 안 쟀다
 - **증권 분배그룹번호 매핑.** ETF 를 받으려면 그 종목이 00006~00010 중 어느 그룹인지 알아야 한다.
   모르면 5 포트를 전부 열어야 한다. 마스터(`A0`)에 실리는지 확인 필요
-- **재전송 포트(20301 등) 사용 여부.** §11④ 가 "재전송 포트 혼용 시 역전이 생길 수 있다" 고
+- **재전송 포트(20301 등) 사용 여부.** feed_handler §11④ 가 "재전송 포트 혼용 시 역전이 생길 수 있다" 고
   적고 있다. 12% 유실을 메우려면 쓰고 싶지만 순서 보장이 깨진다
 - **소비자가 Jeed 를 path 의존으로 볼지 git 의존으로 볼지.** `jeed-wire` 버저닝 방식이 달라진다
 - **`jeed-fix` 의 출구.** 베뉴 어댑터 없이는 `MdMessage` 까지만 나온다. 어느 베뉴를 먼저 붙일지
 - SMBS 방언 (보류)
+
+## 11. `jeed-shm` 링 설계 (2026-09-13)
+
+구현하면서 내린 결정 두 개. 둘 다 `crates/jeed-shm/src/ring.rs` 모듈 문서에 근거가 있다.
+
+### ① 백프레셔가 아니라 덮어쓰기
+
+`SegmentHeader` 에 write cursor 만 있고 read cursor 가 없다. 처음엔 빠뜨린 줄 알았는데
+**그게 맞다.** 백프레셔 링은 꽉 찼을 때 **새 레코드**를 버린다 — 낡은 북을 지키고 방금 시장을
+움직인 체결을 버린다는 뜻이다. 시세에선 거꾸로 된 거래다.
+
+그래서:
+
+- 생산자는 **절대 막히지 않고 스스로 버리지도 않는다.** 한 바퀴 돌면 가장 **오래된** 걸 덮는다
+- 소비자는 자기가 잃은 걸 레코드의 `producer_seq` 로 안다 — feed_handler.md §7 의 그 코드가
+  덮어쓰기 링에서 **정확히** 동작한다. 바뀐 건 아무것도 없다
+- `drop_counter` 의 의미는 "링이 꽉 차서 못 쓴 것" 이 아니라 **"링에 넣기 전에 버린 것"**
+  (디코드 실패 등). 세그먼트 수명 동안 누적이고 재기동에도 안 지운다.
+  `jeed-wire` 쪽 주석을 여기 맞춰 고쳤다
+
+### ② 레코드 자신이 seqlock 이다
+
+덮어쓰기가 사는 대신 생기는 유일한 위험이 **찢긴 읽기**다(소비자가 읽는 중에 생산자가 그 슬롯을
+덮는다). `producer_seq` 가 레코드 헤더 오프셋 8 의 자연정렬 `u64` 라 그걸 그대로 seqlock 으로 쓴다:
+
+```
+생산자                                  소비자
+  seq = u64::MAX (작업 중 센티널)          seq 읽기 → want 와 같아야 한다
+  fence(Release)                          레코드 복사 (read_volatile)
+  ..본문 쓰기..                            fence(Acquire)
+  fence(Release)                          seq 다시 읽기 → 여전히 want 여야 한다
+  seq = s
+  publish(s + 1)
+```
+
+**센티널이 핵심이다.** 없으면 슬롯이 본문은 반쯤 덮인 채 *직전 바퀴의 멀쩡해 보이는 seq* 를
+들고 있어서 소비자가 그걸 유효한 레코드로 읽는다. 와이어 포맷은 하나도 안 바뀌었다 — 이미
+있던 필드에 두 번째 역할을 준 것뿐이다.
+
+### 부수 결정
+
+- **capacity 는 2의 거듭제곱 강제.** 슬롯 인덱스가 핫 루프의 64비트 나눗셈이 아니라 마스크가
+  된다. `jeed_wire::SegmentHeader::slot_offset` 은 일반형(`%`)으로 남겨두고 `jeed-shm` 이
+  마스크 버전을 쓴다
+- **attach 는 링의 끝(live edge)에서 시작한다.** 붙자마자 한 바퀴치 낡은 북을 재생하면 몇 분 전
+  가격으로 판단하게 된다
+- **소비자는 read-only 로 매핑한다.** SPSC 규율을 OS 가 강제한다
+- **슬롯을 commit 없이 떨구면 아무것도 발행되지 않는다** — seq 는 센티널에 머물고 커서는 안 움직이며
+  같은 슬롯이 다음에 다시 나온다. 디코드 실패의 정답 반응이고, CLAUDE.md 의 "부분 갱신 금지" 가
+  타입으로 강제된다
+- **`boot_id` 가 바뀌면 `Recv::Restarted`.** 소비자가 붙어 있으면 섹션이 살아 있어서 재기동한
+  생산자가 같은 메모리에 다시 붙는다(`reused_existing_section()`). 커서만 0 으로 되돌린다
+- **의존성은 `jeed-wire` 하나.** `CreateFileMappingW`/`OpenFileMappingW`/`MapViewOfFile`/
+  `UnmapViewOfFile`/`CloseHandle`/`VirtualQuery`/`GetLastError` 를 직접 선언했다.
+  소비자가 링크하는 크레이트라 `windows-sys` 를 물려주고 싶지 않다
+- **`VirtualQuery` 로 실제 매핑 크기를 확인한다.** 세그먼트 헤더는 *다른 프로세스*가 쓴 것이라
+  거기 적힌 capacity 를 믿고 인덱싱하면 그게 전부다
+
+### 남은 것
+
+- 64Ki 슬롯 = 36MB/채널. 채널당 실제 필요 깊이는 안 쟀다 (`conf/` 기본값 근거 없음)
+- 블로킹 폴백(`WaitOnAddress`/`WakeByAddressSingle`) 미구현. cold 소비자가 busy-spin 하기 싫을 때 필요
+- 소비자가 완전히 따라잡았을 때의 `Recv::Empty` 는 **"조용한 시장"과 "죽은 생산자"를 구별하지
+  못한다.** 하트비트 레코드가 붙어야 완성된다 (feed_handler §9)

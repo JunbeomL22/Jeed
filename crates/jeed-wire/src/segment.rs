@@ -49,8 +49,12 @@ pub struct SegmentHeader {
     /// published. Slot of sequence `s` is `s % capacity`.
     write_cursor: AtomicU64,
 
-    /// Records the producer failed to write (ring full). Diagnostic only;
-    /// readers detect their own gaps from `producer_seq`.
+    /// Records the producer discarded **before** the ring — a datagram it
+    /// could not decode, a record it chose not to publish. Cumulative over the
+    /// life of the segment, not of one producer run.
+    ///
+    /// The ring itself never drops: it overwrites, and readers detect their own
+    /// losses from `producer_seq` (§7).
     drop_counter: AtomicU64,
 
     /// Explicit padding to the end of the second cache line.
@@ -126,12 +130,16 @@ impl SegmentHeader {
 
     /// Publishes records up to (excluding) `next` (release). The producer must
     /// have finished writing slot `next - 1` before calling.
+    ///
+    /// `next` is not required to be larger than the current cursor: a restarted
+    /// producer resets it to zero, which a reader recognises by the changed
+    /// `boot_id`.
     #[inline]
     pub fn publish(&self, next: u64) {
         self.write_cursor.store(next, Ordering::Release);
     }
 
-    /// Records dropped by the producer so far.
+    /// Records the producer discarded before the ring, so far.
     #[inline]
     pub fn drops(&self) -> u64 {
         self.drop_counter.load(Ordering::Relaxed)
