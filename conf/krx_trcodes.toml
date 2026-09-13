@@ -1,15 +1,21 @@
 # GENERATED — 손으로 고치지 않는다. tools/gen_krx_trcodes.py 를 다시 돌린다.
 # 원본: 접속표준서(정보분배-UDP_TCP실시간)_v1.341-배포용.xlsx
+#       접속표준서(UDP) 공통정보(송신채널_정보구분)_v1.26.xlsx
 #
-# 여기에 **멀티캐스트 IP·포트는 없다.** 회선 배정이라 표준서 값이 우리 회선에
-# 그대로 오지 않는다. 배포 설정(conf/krx.toml)은 사람이 적고, 기동 시 거기 적힌
-# trcode 가 이 표에 있는지만 검증한다.
+# 두 표준서를 합친 표다. 길이는 정보분배 인터페이스목록에서, trcode 목록은 양쪽
+# 합집합에서 온다 — 새 상품은 송신채널 쪽에 먼저 뜬다 (17F 코스닥150 위클리옵션,
+# 18F 개별주식 위클리옵션은 정보분배 v1.341 에 아직 없다).
+#
+# 여기에 **멀티캐스트 IP·포트는 없다.** 송신채널 문서에 들어 있지만 읽지 않는다:
+# 회선 배정이라 표준서 값이 우리 회선에 그대로 오지 않는다. 배포 설정(conf/krx.toml)은
+# 사람이 적고, 기동 시 거기 적힌 trcode 를 이 표와 대조해 경고만 낸다.
 
 spec_version = "1.341"
+channel_spec_version = "1.26"
 generated = "2026-09-13"
 interface_count = 123
-code_count = 538
-ambiguous_code_count = 3
+code_count = 591
+ambiguous_code_count = 5
 
 # 정보구분+시장구분 3바이트 (trcode 의 뒤 3자리) → 상품군.
 # 멀티캐스트 그룹이 상품군마다 갈리므로, 전략이 안 보는 상품군은 소켓을 안 연다.
@@ -29,13 +35,15 @@ ambiguous_code_count = 3
 "01B" = "장내일반채권"
 "01E" = "배출권"
 "01F" = "kospi200선물"
-"01G" = "금"
+"01G" = "주식"
 "01K" = "장내국채"
 "01M" = "장내소액채권"
 "01Q" = "주식"
 "01R" = "장내RP(REPO)"
 "01S" = "주식"
 "01X" = "주식"
+"027" = "장내소매채권"
+"02B" = "장내주식관련사채"
 "02F" = "코스닥150선물"
 "02S" = "ELW"
 "03F" = "KOSPI200옵션"
@@ -45,12 +53,13 @@ ambiguous_code_count = 3
 "04S" = "ETN"
 "054" = "EUREX KOSPI200옵션"
 "05F" = "주식옵션"
+"05S" = "상장형 수익증권"
 "06F" = "금융상품선물(국채,금리,통화)"
 "077" = "장외채권(호가집중)"
-"07F" = "상품옵션(휴면)"
+"07F" = "상품옵션"
 "08F" = "변동성지수선물"
-"09F" = "섹터지수선물, 코스닥글로벌지수선물"
-"10F" = "일반상품선물(금,돈육(휴면))"
+"09F" = "섹터지수선물"
+"10F" = "일반상품선물(금,돈육)"
 "11F" = "미니kospi200선물"
 "126" = "CME 미국달러선물(야간)"
 "12F" = "미니kospi200옵션"
@@ -59,7 +68,15 @@ ambiguous_code_count = 3
 "154" = "EUREX 미니코스피200선물"
 "15F" = "코스닥150옵션"
 "16F" = "코스피 200 위클리 옵션"
+"17F" = "코스닥 150 위클리 옵션"
+"18F" = "개별주식 위클리 옵션"
 "909" = "기타"
+
+# 파생 호가 전문의 단수. 상품군이 정하고, 개별주식 계열만 10단이다.
+# jeed-krx 의 decode::derivative::{quote,trade_quote}::depth_for() 가 이 집합이다.
+[derivative_depth]
+five = ["01F", "02F", "03F", "04F", "06F", "07F", "08F", "09F", "10F", "11F", "12F", "13F", "15F", "16F", "17F"]
+ten = ["05F", "18F"]
 
 # 데이터구분 2바이트 (trcode 의 앞 2자리) → 이 구분을 쓰는 인터페이스.
 # 표준서에 표가 없어서 코드에서 역산했다.
@@ -358,550 +375,607 @@ IFNDRCY0003 = { length = 12, market = "ALL", period = "온라인", name = "인�
 
 # trcode → 인터페이스. 길이는 [interface] 에서 끌어온다 (중복 저장하지 않는다).
 # channel 은 표준서의 회선 그룹(증권A/파생A/…)이지 우리 회선이 아니다.
+# source 는 이 코드가 어느 표준서에서 왔는지 — 1.26 만 있는 코드는 정보분배
+# 표준서가 아직 못 따라온 신규 상품이다.
 [code]
-A001B = { interface = "IFMSBTD0016", group = "01B", channel = "채권A", market = "BND" }
-A001E = { interface = "IFMSBTD0028", group = "01E", channel = "일반A", market = "ETS" }
-A001F = { interface = "IFMSBTD0022", group = "01F", channel = "파생A", market = "DRV" }
-A001G = { interface = "IFMSBTD0027", group = "01G", channel = "일반A", market = "CMD" }
-A001Q = { interface = "IFMSBTD0001", group = "01Q", channel = "증권B", market = "KSQ" }
-A001R = { interface = "IFMSBTD0017", group = "01R", channel = "채권A", market = "RPO" }
-A001S = { interface = "IFMSBTD0001", group = "01S", channel = "증권A", market = "STK" }
-A001X = { interface = "IFMSBTD0001", group = "01X", channel = "증권B", market = "KNX" }
-A002F = { interface = "IFMSBTD0022", group = "02F", channel = "파생A", market = "DRV" }
-A002S = { interface = "IFMSBTD0001", group = "02S", channel = "증권C", market = "STK" }
-A003F = { interface = "IFMSBTD0022", group = "03F", channel = "파생A", market = "DRV" }
-A003S = { interface = "IFMSBTD0001", group = "03S", channel = "증권C", market = "STK" }
-A004F = { interface = "IFMSBTD0022", group = "04F", channel = "파생A", market = "DRV" }
-A004S = { interface = "IFMSBTD0001", group = "04S", channel = "증권C", market = "STK" }
-A005F = { interface = "IFMSBTD0022", group = "05F", channel = "파생A", market = "DRV" }
-A006F = { interface = "IFMSBTD0022", group = "06F", channel = "파생A", market = "DRV" }
-A007F = { interface = "IFMSBTD0022", group = "07F", channel = "파생A", market = "DRV" }
-A008F = { interface = "IFMSBTD0022", group = "08F", channel = "파생A", market = "DRV" }
-A009F = { interface = "IFMSBTD0022", group = "09F", channel = "파생A", market = "DRV" }
-A010F = { interface = "IFMSBTD0022", group = "10F", channel = "파생A", market = "DRV" }
-A011F = { interface = "IFMSBTD0022", group = "11F", channel = "파생A", market = "DRV" }
-A012F = { interface = "IFMSBTD0022", group = "12F", channel = "파생A", market = "DRV" }
-A013F = { interface = "IFMSBTD0022", group = "13F", channel = "파생A", market = "DRV" }
-A014F = { interface = "IFMSBTD0022", group = "14F", channel = "파생B", market = "DRV" }
-A015F = { interface = "IFMSBTD0022", group = "15F", channel = "파생A", market = "DRV" }
-A016F = { interface = "IFMSBTD0022", group = "16F", channel = "파생A", market = "DRV" }
-A102S = { interface = "IFMSBTD0004", group = "02S", channel = "증권C", market = "STK" }
-A104S = { interface = "IFMSBTD0005", group = "04S", channel = "증권C", market = "STK" }
-A301B = { interface = "IFMSRPD0027", group = "01B", channel = "채권A", market = "BND" }
-A301E = { interface = "IFMSRPD0052", group = "01E", channel = "일반A", market = "ETS" }
-A301F = { interface = "IFMSRPD0036", group = "01F", channel = "파생A", market = "DRV" }
-A301G = { interface = "IFMSRPD0047", group = "01G", channel = "일반A", market = "CMD" }
-A301K = { interface = "IFMSRPD0027", group = "01K", channel = "채권A", market = "KTS" }
-A301M = { interface = "IFMSRPD0027", group = "01M", channel = "채권A", market = "SMB" }
-A301Q = { interface = "IFMSRPD0004", group = "01Q", channel = "증권B", market = "KSQ" }
-A301S = { interface = "IFMSRPD0004", group = "01S", channel = "증권A", market = "STK" }
-A301X = { interface = "IFMSRPD0004", group = "01X", channel = "증권B", market = "KNX" }
-A302F = { interface = "IFMSRPD0036", group = "02F", channel = "파생A", market = "DRV" }
-A302S = { interface = "IFMSRPD0004", group = "02S", channel = "증권C", market = "STK" }
-A303F = { interface = "IFMSRPD0036", group = "03F", channel = "파생A", market = "DRV" }
-A303S = { interface = "IFMSRPD0004", group = "03S", channel = "증권C", market = "STK" }
-A304F = { interface = "IFMSRPD0036", group = "04F", channel = "파생A", market = "DRV" }
-A304S = { interface = "IFMSRPD0004", group = "04S", channel = "증권C", market = "STK" }
-A305F = { interface = "IFMSRPD0036", group = "05F", channel = "파생A", market = "DRV" }
-A306F = { interface = "IFMSRPD0036", group = "06F", channel = "파생A", market = "DRV" }
-A307F = { interface = "IFMSRPD0036", group = "07F", channel = "파생A", market = "DRV" }
-A308F = { interface = "IFMSRPD0036", group = "08F", channel = "파생A", market = "DRV" }
-A309F = { interface = "IFMSRPD0036", group = "09F", channel = "파생A", market = "DRV" }
-A310F = { interface = "IFMSRPD0036", group = "10F", channel = "파생A", market = "DRV" }
-A311F = { interface = "IFMSRPD0036", group = "11F", channel = "파생A", market = "DRV" }
-A312F = { interface = "IFMSRPD0036", group = "12F", channel = "파생A", market = "DRV" }
-A313F = { interface = "IFMSRPD0036", group = "13F", channel = "파생A", market = "DRV" }
-A314F = { interface = "IFMSRPD0036", group = "14F", channel = "파생B", market = "DRV" }
-A315F = { interface = "IFMSRPD0036", group = "15F", channel = "파생A", market = "DRV" }
-A316F = { interface = "IFMSRPD0036", group = "16F", channel = "파생A", market = "DRV" }
-A401E = { interface = "IFMSRPD0065", group = "01E", channel = "일반A", market = "ETS" }
-A401Q = { interface = "IFMSRPD0011", group = "01Q", channel = "증권B", market = "KSQ" }
-A401S = { interface = "IFMSRPD0011", group = "01S", channel = "증권A", market = "STK" }
-A401X = { interface = "IFMSRPD0011", group = "01X", channel = "증권B", market = "KNX" }
-A403S = { interface = "IFMSRPD0011", group = "03S", channel = "증권C", market = "STK" }
-A404S = { interface = "IFMSRPD0011", group = "04S", channel = "증권C", market = "STK" }
-A501G = { interface = "IFMSRPD0012", group = "01G", channel = "일반A", market = "CMD" }
-A501X = { interface = "IFMSRPD0012", group = "01X", channel = "증권B", market = "KNX" }
-A601B = { interface = "IFMSRPD0032", group = "01B", channel = "채권A", market = "BND" }
-A601E = { interface = "IFMSRPD0013", group = "01E", channel = "일반A", market = "ETS" }
-A601F = { interface = "IFMSRPD0041", group = "01F", channel = "파생A", market = "DRV" }
-A601G = { interface = "IFMSRPD0013", group = "01G", channel = "일반A", market = "CMD" }
-A601K = { interface = "IFMSRPD0032", group = "01K", channel = "채권A", market = "KTS" }
-A601M = { interface = "IFMSRPD0032", group = "01M", channel = "채권A", market = "SMB" }
-A601Q = { interface = "IFMSRPD0013", group = "01Q", channel = "증권B", market = "KSQ" }
-A601R = { interface = "IFMSRPD0032", group = "01R", channel = "채권A", market = "RPO" }
-A601S = { interface = "IFMSRPD0013", group = "01S", channel = "증권A", market = "STK" }
-A601X = { interface = "IFMSRPD0013", group = "01X", channel = "증권B", market = "KNX" }
-A602F = { interface = "IFMSRPD0041", group = "02F", channel = "파생A", market = "DRV" }
-A602S = { interface = "IFMSRPD0013", group = "02S", channel = "증권C", market = "STK" }
-A603F = { interface = "IFMSRPD0041", group = "03F", channel = "파생A", market = "DRV" }
-A603S = { interface = "IFMSRPD0013", group = "03S", channel = "증권C", market = "STK" }
-A604F = { interface = "IFMSRPD0041", group = "04F", channel = "파생A", market = "DRV" }
-A604S = { interface = "IFMSRPD0013", group = "04S", channel = "증권C", market = "STK" }
-A605F = { interface = "IFMSRPD0041", group = "05F", channel = "파생A", market = "DRV" }
-A606F = { interface = "IFMSRPD0041", group = "06F", channel = "파생A", market = "DRV" }
-A607F = { interface = "IFMSRPD0041", group = "07F", channel = "파생A", market = "DRV" }
-A608F = { interface = "IFMSRPD0041", group = "08F", channel = "파생A", market = "DRV" }
-A609F = { interface = "IFMSRPD0041", group = "09F", channel = "파생A", market = "DRV" }
-A610F = { interface = "IFMSRPD0041", group = "10F", channel = "파생A", market = "DRV" }
-A611F = { interface = "IFMSRPD0041", group = "11F", channel = "파생A", market = "DRV" }
-A612F = { interface = "IFMSRPD0041", group = "12F", channel = "파생A", market = "DRV" }
-A613F = { interface = "IFMSRPD0041", group = "13F", channel = "파생A", market = "DRV" }
-A614F = { interface = "IFMSRPD0041", group = "14F", channel = "파생B", market = "DRV" }
-A615F = { interface = "IFMSRPD0041", group = "15F", channel = "파생A", market = "DRV" }
-A616F = { interface = "IFMSRPD0041", group = "16F", channel = "파생A", market = "DRV" }
-A701B = { interface = "IFMSRPD0008", group = "01B", channel = "채권A", market = "BND" }
-A701E = { interface = "IFMSRPD0008", group = "01E", channel = "일반A", market = "ETS" }
-A701F = { interface = "IFMSRPD0008", group = "01F", channel = "파생A", market = "DRV" }
-A701G = { interface = "IFMSRPD0008", group = "01G", channel = "일반A", market = "CMD" }
-A701K = { interface = "IFMSRPD0008", group = "01K", channel = "채권A", market = "KTS" }
-A701M = { interface = "IFMSRPD0008", group = "01M", channel = "채권A", market = "SMB" }
-A701Q = { interface = "IFMSRPD0008", group = "01Q", channel = "증권B", market = "KSQ" }
-A701R = { interface = "IFMSRPD0008", group = "01R", channel = "채권A", market = "RPO" }
-A701S = { interface = "IFMSRPD0008", group = "01S", channel = "증권A", market = "STK" }
-A701X = { interface = "IFMSRPD0008", group = "01X", channel = "증권B", market = "KNX" }
-A702F = { interface = "IFMSRPD0008", group = "02F", channel = "파생A", market = "DRV" }
-A702S = { interface = "IFMSRPD0008", group = "02S", channel = "증권C", market = "STK" }
-A703F = { interface = "IFMSRPD0008", group = "03F", channel = "파생A", market = "DRV" }
-A703S = { interface = "IFMSRPD0008", group = "03S", channel = "증권C", market = "STK" }
-A704F = { interface = "IFMSRPD0008", group = "04F", channel = "파생A", market = "DRV" }
-A704S = { interface = "IFMSRPD0008", group = "04S", channel = "증권C", market = "STK" }
-A705F = { interface = "IFMSRPD0008", group = "05F", channel = "파생A", market = "DRV" }
-A706F = { interface = "IFMSRPD0008", group = "06F", channel = "파생A", market = "DRV" }
-A707F = { interface = "IFMSRPD0008", group = "07F", channel = "파생A", market = "DRV" }
-A708F = { interface = "IFMSRPD0008", group = "08F", channel = "파생A", market = "DRV" }
-A709F = { interface = "IFMSRPD0008", group = "09F", channel = "파생A", market = "DRV" }
-A710F = { interface = "IFMSRPD0008", group = "10F", channel = "파생A", market = "DRV" }
-A711F = { interface = "IFMSRPD0008", group = "11F", channel = "파생A", market = "DRV" }
-A712F = { interface = "IFMSRPD0008", group = "12F", channel = "파생A", market = "DRV" }
-A713F = { interface = "IFMSRPD0008", group = "13F", channel = "파생A", market = "DRV" }
-A714F = { interface = "IFMSRPD0008", group = "14F", channel = "파생B", market = "DRV" }
-A715F = { interface = "IFMSRPD0008", group = "15F", channel = "파생A", market = "DRV" }
-A716F = { interface = "IFMSRPD0008", group = "16F", channel = "파생A", market = "DRV" }
-A801Q = { interface = "IFMSRPD0018", group = "01Q", channel = "증권B", market = "KSQ" }
-A801S = { interface = "IFMSRPD0018", group = "01S", channel = "증권A", market = "STK" }
-A801X = { interface = "IFMSRPD0018", group = "01X", channel = "증권B", market = "KNX" }
-A802S = { interface = "IFMSRPD0018", group = "02S", channel = "증권C", market = "STK" }
-A803S = { interface = "IFMSRPD0018", group = "03S", channel = "증권C", market = "STK" }
-A804S = { interface = "IFMSRPD0018", group = "04S", channel = "증권C", market = "STK" }
-A901Q = { interface = "IFMSBTD0014", group = "01Q", channel = "증권B", market = "KSQ" }
-A901S = { interface = "IFMSBTD0014", group = "01S", channel = "증권A", market = "STK" }
-A901X = { interface = "IFMSBTD0014", group = "01X", channel = "증권B", market = "KNX" }
-AC01E = { interface = "IFMSSTD0013", group = "01E", channel = "일반A", market = "ETS" }
-B001Q = { interface = "IFMSRPD0056", group = "01Q", channel = "증권B", market = "KSQ" }
-B001S = { interface = "IFMSRPD0056", group = "01S", channel = "증권A", market = "STK" }
-B001X = { interface = "IFMSRPD0056", group = "01X", channel = "증권B", market = "KNX" }
-B201E = { interface = "IFMSRPD0055", group = "01E", channel = "일반A", market = "ETS" }
-B201F = { interface = "IFMSRPD0044", group = "01F", channel = "파생A", market = "DRV" }
-B201G = { interface = "IFMSRPD0050", group = "01G", channel = "일반A", market = "CMD" }
-B201X = { interface = "IFMSRPD0021", group = "01X", channel = "증권B", market = "KNX" }
-B202F = { interface = "IFMSRPD0044", group = "02F", channel = "파생A", market = "DRV" }
-B202S = { interface = "IFMSRPD0022", group = "02S", channel = "증권C", market = "STK" }
-B203F = { interface = "IFMSRPD0044", group = "03F", channel = "파생A", market = "DRV" }
-B204F = { interface = "IFMSRPD0045", group = "04F", channel = "파생A", market = "DRV" }
-B204S = { interface = "IFMSRPD0022", group = "04S", channel = "증권C", market = "STK" }
-B205F = { interface = "IFMSRPD0045", group = "05F", channel = "파생A", market = "DRV" }
-B206F = { interface = "IFMSRPD0044", group = "06F", channel = "파생A", market = "DRV" }
-B207F = { interface = "IFMSRPD0044", group = "07F", channel = "파생A", market = "DRV" }
-B208F = { interface = "IFMSRPD0044", group = "08F", channel = "파생A", market = "DRV" }
-B209F = { interface = "IFMSRPD0044", group = "09F", channel = "파생A", market = "DRV" }
-B210F = { interface = "IFMSRPD0044", group = "10F", channel = "파생A", market = "DRV" }
-B211F = { interface = "IFMSRPD0044", group = "11F", channel = "파생A", market = "DRV" }
-B212F = { interface = "IFMSRPD0044", group = "12F", channel = "파생A", market = "DRV" }
-B213F = { interface = "IFMSRPD0044", group = "13F", channel = "파생A", market = "DRV" }
-B214F = { interface = "IFMSRPD0044", group = "14F", channel = "파생B", market = "DRV" }
-B215F = { interface = "IFMSRPD0044", group = "15F", channel = "파생A", market = "DRV" }
-B216F = { interface = "IFMSRPD0044", group = "16F", channel = "파생A", market = "DRV" }
-B501Q = { interface = "IFMSSTD0007", group = "01Q", channel = "증권B", market = "KSQ" }
-B501S = { interface = "IFMSSTD0007", group = "01S", channel = "증권A", market = "STK" }
-B501X = { interface = "IFMSSTD0007", group = "01X", channel = "증권B", market = "KNX" }
-B601B = { interface = "IFMSRPD0023", group = "01B", channel = "채권A", market = "BND" }
-B601E = { interface = "IFMSRPD0051", group = "01E", channel = "일반A", market = "ETS" }
-B601F = { interface = "IFMSRPD0034", group = "01F", channel = "파생A", market = "DRV" }
-B601G = { interface = "IFMSRPD0046", group = "01G", channel = "일반A", market = "CMD" }
-B601K = { interface = "IFMSRPD0023", group = "01K", channel = "채권A", market = "KTS" }
-B601M = { interface = "IFMSRPD0024", group = "01M", channel = "채권A", market = "SMB" }
-B601Q = { interface = "IFMSRPD0002", group = "01Q", channel = "증권B", market = "KSQ" }
-B601R = { interface = "IFMSRPD0025", group = "01R", channel = "채권A", market = "RPO" }
-B601S = { interface = "IFMSRPD0002", group = "01S", channel = "증권A", market = "STK" }
-B601X = { interface = "IFMSRPD0002", group = "01X", channel = "증권B", market = "KNX" }
-B602F = { interface = "IFMSRPD0034", group = "02F", channel = "파생A", market = "DRV" }
-B603F = { interface = "IFMSRPD0034", group = "03F", channel = "파생A", market = "DRV" }
-B604F = { interface = "IFMSRPD0035", group = "04F", channel = "파생A", market = "DRV" }
-B605F = { interface = "IFMSRPD0035", group = "05F", channel = "파생A", market = "DRV" }
-B606F = { interface = "IFMSRPD0034", group = "06F", channel = "파생A", market = "DRV" }
-B607F = { interface = "IFMSRPD0034", group = "07F", channel = "파생A", market = "DRV" }
-B608F = { interface = "IFMSRPD0034", group = "08F", channel = "파생A", market = "DRV" }
-B609F = { interface = "IFMSRPD0034", group = "09F", channel = "파생A", market = "DRV" }
-B610F = { interface = "IFMSRPD0034", group = "10F", channel = "파생A", market = "DRV" }
-B611F = { interface = "IFMSRPD0034", group = "11F", channel = "파생A", market = "DRV" }
-B612F = { interface = "IFMSRPD0034", group = "12F", channel = "파생A", market = "DRV" }
-B613F = { interface = "IFMSRPD0034", group = "13F", channel = "파생A", market = "DRV" }
-B614F = { interface = "IFMSRPD0034", group = "14F", channel = "파생B", market = "DRV" }
-B615F = { interface = "IFMSRPD0034", group = "15F", channel = "파생A", market = "DRV" }
-B616F = { interface = "IFMSRPD0034", group = "16F", channel = "파생A", market = "DRV" }
-B702S = { interface = "IFMSRPD0003", group = "02S", channel = "증권C", market = "STK" }
-B703S = { interface = "IFMSRPD0003", group = "03S", channel = "증권C", market = "STK" }
-B704S = { interface = "IFMSRPD0003", group = "04S", channel = "증권C", market = "STK" }
-B801Q = { interface = "IFMSRPD0063", group = "01Q", channel = "증권B", market = "KSQ" }
-B801S = { interface = "IFMSRPD0063", group = "01S", channel = "증권A", market = "STK" }
-B801X = { interface = "IFMSRPD0063", group = "01X", channel = "증권B", market = "KNX" }
-B803S = { interface = "IFMSRPD0063", group = "03S", channel = "증권C", market = "STK" }
-B804S = { interface = "IFMSRPD0063", group = "04S", channel = "증권C", market = "STK" }
-B901Q = { interface = "IFMSSTD0006", group = "01Q", channel = "증권B", market = "KSQ" }
-B901S = { interface = "IFMSSTD0006", group = "01S", channel = "증권A", market = "STK" }
-B901X = { interface = "IFMSSTD0006", group = "01X", channel = "증권B", market = "KNX" }
-B902S = { interface = "IFMSSTD0006", group = "02S", channel = "증권C", market = "STK" }
-B903S = { interface = "IFMSSTD0006", group = "03S", channel = "증권C", market = "STK" }
-B904S = { interface = "IFMSSTD0006", group = "04S", channel = "증권C", market = "STK" }
-BN01B = { interface = "IFMSBTD0021", group = "01B", channel = "채권A", market = "BND" }
-C001Q = { interface = "IFMSSTD0001", group = "01Q", channel = "증권B", market = "KSQ" }
-C001S = { interface = "IFMSSTD0001", group = "01S", channel = "증권A", market = "STK" }
-C001X = { interface = "IFMSSTD0001", group = "01X", channel = "증권B", market = "KNX" }
-C101G = { interface = "IFMSSTD0003", group = "01G", channel = "일반A", market = "CMD" }
-C101Q = { interface = "IFMSSTD0003", group = "01Q", channel = "증권B", market = "KSQ" }
-C101S = { interface = "IFMSSTD0003", group = "01S", channel = "증권A", market = "STK" }
-C101X = { interface = "IFMSSTD0003", group = "01X", channel = "증권B", market = "KNX" }
-C102S = { interface = "IFMSSTD0003", group = "02S", channel = "증권C", market = "STK" }
-C103S = { interface = "IFMSSTD0003", group = "03S", channel = "증권C", market = "STK" }
-C104S = { interface = "IFMSSTD0003", group = "04S", channel = "증권C", market = "STK" }
-C301Q = { interface = "IFMSSTD0009", group = "01Q", channel = "증권B", market = "KSQ" }
-C301S = { interface = "IFMSSTD0009", group = "01S", channel = "증권A", market = "STK" }
-C401B = { interface = "IFMSRPD0067", group = "01B", channel = "채권A", market = "BND" }
-C401E = { interface = "IFMSRPD0061", group = "01E", channel = "일반A", market = "ETS" }
-C401F = { interface = "IFMSRPD0059", group = "01F", channel = "파생A", market = "DRV" }
-C401G = { interface = "IFMSRPD0060", group = "01G", channel = "일반A", market = "CMD" }
-C401Q = { interface = "IFMSRPD0057", group = "01Q", channel = "증권B", market = "KSQ" }
-C401R = { interface = "IFMSRPD0058", group = "01R", channel = "채권A", market = "RPO" }
-C401S = { interface = "IFMSRPD0057", group = "01S", channel = "증권A", market = "STK" }
-C401X = { interface = "IFMSRPD0057", group = "01X", channel = "증권B", market = "KNX" }
-C402F = { interface = "IFMSRPD0059", group = "02F", channel = "파생A", market = "DRV" }
-C402S = { interface = "IFMSRPD0057", group = "02S", channel = "증권C", market = "STK" }
-C403F = { interface = "IFMSRPD0059", group = "03F", channel = "파생A", market = "DRV" }
-C403S = { interface = "IFMSRPD0057", group = "03S", channel = "증권C", market = "STK" }
-C404F = { interface = "IFMSRPD0059", group = "04F", channel = "파생A", market = "DRV" }
-C404S = { interface = "IFMSRPD0057", group = "04S", channel = "증권C", market = "STK" }
-C405F = { interface = "IFMSRPD0059", group = "05F", channel = "파생A", market = "DRV" }
-C406F = { interface = "IFMSRPD0059", group = "06F", channel = "파생A", market = "DRV" }
-C407F = { interface = "IFMSRPD0059", group = "07F", channel = "파생A", market = "DRV" }
-C408F = { interface = "IFMSRPD0059", group = "08F", channel = "파생A", market = "DRV" }
-C409F = { interface = "IFMSRPD0059", group = "09F", channel = "파생A", market = "DRV" }
-C410F = { interface = "IFMSRPD0059", group = "10F", channel = "파생A", market = "DRV" }
-C411F = { interface = "IFMSRPD0059", group = "11F", channel = "파생A", market = "DRV" }
-C412F = { interface = "IFMSRPD0059", group = "12F", channel = "파생A", market = "DRV" }
-C413F = { interface = "IFMSRPD0059", group = "13F", channel = "파생A", market = "DRV" }
-C414F = { interface = "IFMSRPD0059", group = "14F", channel = "파생B", market = "DRV" }
-C415F = { interface = "IFMSRPD0059", group = "15F", channel = "파생A", market = "DRV" }
-C416F = { interface = "IFMSRPD0059", group = "16F", channel = "파생A", market = "DRV" }
-CA01Q = { interface = "IFMSBTD0002", group = "01Q", channel = "증권B", market = "KSQ" }
-CA01S = { interface = "IFMSBTD0002", group = "01S", channel = "증권A", market = "STK" }
-CB01R = { interface = "IFMSBTD0029", group = "01R", channel = "채권A", market = "RPO" }
-E900Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ" }
-E900S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK" }
-E900X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX" }
-E9909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS" }
-F000Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ" }
-F000S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK" }
-F000X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX" }
-F0909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS" }
-F901B = { interface = "IFMSBTD0020", group = "01B", channel = "채권A", market = "BND" }
-F901M = { interface = "IFMSBTD0020", group = "01M", channel = "채권A", market = "SMB" }
-FT000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "" }
-G001M = { interface = "IFMSRID0003", group = "01M", channel = "채권A", market = "SMB" }
-G300B = { interface = "IFMSBTD0018", group = "00B", channel = "채권A", market = "BND" }
-G701B = { interface = "IFMSRPD0029", group = "01B", channel = "채권A", market = "BND" }
-G701E = { interface = "IFMSRPD0053", group = "01E", channel = "일반A", market = "ETS" }
-G701F = { interface = "IFMSRPD0037", group = "01F", channel = "파생A", market = "DRV" }
-G701G = { interface = "IFMSRPD0048", group = "01G", channel = "일반A", market = "CMD" }
-G701K = { interface = "IFMSRPD0029", group = "01K", channel = "채권A", market = "KTS" }
-G701M = { interface = "IFMSRPD0030", group = "01M", channel = "채권A", market = "SMB" }
-G701R = { interface = "IFMSRPD0031", group = "01R", channel = "채권A", market = "RPO" }
-G702F = { interface = "IFMSRPD0037", group = "02F", channel = "파생A", market = "DRV" }
-G703F = { interface = "IFMSRPD0037", group = "03F", channel = "파생A", market = "DRV" }
-G704F = { interface = "IFMSRPD0038", group = "04F", channel = "파생A", market = "DRV" }
-G705F = { interface = "IFMSRPD0038", group = "05F", channel = "파생A", market = "DRV" }
-G706F = { interface = "IFMSRPD0037", group = "06F", channel = "파생A", market = "DRV" }
-G707F = { interface = "IFMSRPD0037", group = "07F", channel = "파생A", market = "DRV" }
-G708F = { interface = "IFMSRPD0037", group = "08F", channel = "파생A", market = "DRV" }
-G709F = { interface = "IFMSRPD0037", group = "09F", channel = "파생A", market = "DRV" }
-G710F = { interface = "IFMSRPD0037", group = "10F", channel = "파생A", market = "DRV" }
-G711F = { interface = "IFMSRPD0037", group = "11F", channel = "파생A", market = "DRV" }
-G712F = { interface = "IFMSRPD0037", group = "12F", channel = "파생A", market = "DRV" }
-G713F = { interface = "IFMSRPD0037", group = "13F", channel = "파생A", market = "DRV" }
-G714F = { interface = "IFMSRPD0037", group = "14F", channel = "파생B", market = "DRV" }
-G715F = { interface = "IFMSRPD0037", group = "15F", channel = "파생A", market = "DRV" }
-G716F = { interface = "IFMSRPD0037", group = "16F", channel = "파생A", market = "DRV" }
-H101F = { interface = "IFMSSTD0005", group = "01F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H102F = { interface = "IFMSSTD0005", group = "02F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H103F = { interface = "IFMSSTD0005", group = "03F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H104F = { interface = "IFMSSTD0005", group = "04F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H105F = { interface = "IFMSSTD0005", group = "05F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H106F = { interface = "IFMSSTD0005", group = "06F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H107F = { interface = "IFMSSTD0005", group = "07F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H108F = { interface = "IFMSSTD0005", group = "08F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H109F = { interface = "IFMSSTD0005", group = "09F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H110F = { interface = "IFMSSTD0005", group = "10F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H111F = { interface = "IFMSSTD0005", group = "11F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H112F = { interface = "IFMSSTD0005", group = "12F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H113F = { interface = "IFMSSTD0005", group = "13F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H114F = { interface = "IFMSSTD0005", group = "14F", channel = "파생B", market = "DRV", also = ["IFMSRID0007"] }
-H115F = { interface = "IFMSSTD0005", group = "15F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H116F = { interface = "IFMSSTD0005", group = "16F", channel = "파생A", market = "DRV", also = ["IFMSRID0007"] }
-H201F = { interface = "IFMSRID0008", group = "01F", channel = "파생A", market = "DRV" }
-H202F = { interface = "IFMSRID0008", group = "02F", channel = "파생A", market = "DRV" }
-H203F = { interface = "IFMSRID0008", group = "03F", channel = "파생A", market = "DRV" }
-H204F = { interface = "IFMSRID0008", group = "04F", channel = "파생A", market = "DRV" }
-H205F = { interface = "IFMSRID0008", group = "05F", channel = "파생A", market = "DRV" }
-H206F = { interface = "IFMSRID0008", group = "06F", channel = "파생A", market = "DRV" }
-H207F = { interface = "IFMSRID0008", group = "07F", channel = "파생A", market = "DRV" }
-H208F = { interface = "IFMSRID0008", group = "08F", channel = "파생A", market = "DRV" }
-H209F = { interface = "IFMSRID0008", group = "09F", channel = "파생A", market = "DRV" }
-H210F = { interface = "IFMSRID0008", group = "10F", channel = "파생A", market = "DRV" }
-H211F = { interface = "IFMSRID0008", group = "11F", channel = "파생A", market = "DRV" }
-H212F = { interface = "IFMSRID0008", group = "12F", channel = "파생A", market = "DRV" }
-H213F = { interface = "IFMSRID0008", group = "13F", channel = "파생A", market = "DRV" }
-H214F = { interface = "IFMSRID0008", group = "14F", channel = "파생B", market = "DRV" }
-H215F = { interface = "IFMSRID0008", group = "15F", channel = "파생A", market = "DRV" }
-H216F = { interface = "IFMSRID0008", group = "16F", channel = "파생A", market = "DRV" }
-H301F = { interface = "IFMSRID0009", group = "01F", channel = "파생A", market = "DRV" }
-H302F = { interface = "IFMSRID0009", group = "02F", channel = "파생A", market = "DRV" }
-H304F = { interface = "IFMSRID0009", group = "04F", channel = "파생A", market = "DRV" }
-H306F = { interface = "IFMSRID0009", group = "06F", channel = "파생A", market = "DRV" }
-H308F = { interface = "IFMSRID0009", group = "08F", channel = "파생A", market = "DRV" }
-H309F = { interface = "IFMSRID0009", group = "09F", channel = "파생A", market = "DRV" }
-H310F = { interface = "IFMSRID0009", group = "10F", channel = "파생A", market = "DRV" }
-H311F = { interface = "IFMSRID0009", group = "11F", channel = "파생A", market = "DRV" }
-H313F = { interface = "IFMSRID0009", group = "13F", channel = "파생A", market = "DRV" }
-H314F = { interface = "IFMSRID0009", group = "14F", channel = "파생B", market = "DRV" }
-H404F = { interface = "IFMSBTD0025", group = "04F", channel = "파생A", market = "DRV" }
-H405F = { interface = "IFMSBTD0025", group = "05F", channel = "파생A", market = "DRV" }
-H506F = { interface = "IFMSRID0013", group = "06F", channel = "파생A", market = "DRV" }
-H599F = { interface = "IFMSRID0013", group = "99F", channel = "파생A", market = "DRV" }
-H606F = { interface = "IFMSBTD0026", group = "06F", channel = "파생A", market = "DRV" }
-HA06F = { interface = "IFMSRID0041", group = "06F", channel = "파생A", market = "DRV" }
-HE000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "" }
-I2000 = { interface = "IFMSRPD0001", group = "000", channel = "ALL", market = "" }
-I501Q = { interface = "IFMSBTD0009", group = "01Q", channel = "증권B", market = "KSQ" }
-I501S = { interface = "IFMSBTD0009", group = "01S", channel = "증권A", market = "STK" }
-I501X = { interface = "IFMSBTD0009", group = "01X", channel = "증권B", market = "KNX" }
-I503S = { interface = "IFMSBTD0009", group = "03S", channel = "증권C", market = "STK" }
-I504S = { interface = "IFMSBTD0009", group = "04S", channel = "증권C", market = "STK" }
-I601B = { interface = "IFMSBTD0010", group = "01B", channel = "채권A", market = "BND" }
-I601K = { interface = "IFMSBTD0010", group = "01K", channel = "채권A", market = "KTS" }
-I601M = { interface = "IFMSBTD0010", group = "01M", channel = "채권A", market = "SMB" }
-I601Q = { interface = "IFMSBTD0010", group = "01Q", channel = "증권B", market = "KSQ" }
-I601R = { interface = "IFMSBTD0010", group = "01R", channel = "채권A", market = "RPO" }
-I601S = { interface = "IFMSBTD0010", group = "01S", channel = "증권A", market = "STK" }
-I601X = { interface = "IFMSBTD0010", group = "01X", channel = "증권B", market = "KNX" }
-I602S = { interface = "IFMSBTD0010", group = "02S", channel = "증권C", market = "STK" }
-I603S = { interface = "IFMSBTD0010", group = "03S", channel = "증권C", market = "STK" }
-I604S = { interface = "IFMSBTD0010", group = "04S", channel = "증권C", market = "STK" }
-I701Q = { interface = "IFMSBTD0011", group = "01Q", channel = "증권B", market = "KSQ" }
-I701S = { interface = "IFMSBTD0011", group = "01S", channel = "증권A", market = "STK" }
-I701X = { interface = "IFMSBTD0011", group = "01X", channel = "증권B", market = "KNX" }
-I702S = { interface = "IFMSBTD0011", group = "02S", channel = "증권C", market = "STK" }
-I703S = { interface = "IFMSBTD0011", group = "03S", channel = "증권C", market = "STK" }
-I704S = { interface = "IFMSBTD0011", group = "04S", channel = "증권C", market = "STK" }
-I801Q = { interface = "IFMSSTD0012", group = "01Q", channel = "증권B", market = "KSQ" }
-I801S = { interface = "IFMSSTD0012", group = "01S", channel = "증권A", market = "STK" }
-I803S = { interface = "IFMSSTD0012", group = "03S", channel = "증권C", market = "STK" }
-I804S = { interface = "IFMSSTD0012", group = "04S", channel = "증권C", market = "STK" }
-IC01G = { interface = "IFMSSTD0004", group = "01G", channel = "일반A", market = "CMD" }
-IC02S = { interface = "IFMSSTD0004", group = "02S", channel = "증권C", market = "STK" }
-IC03S = { interface = "IFMSSTD0004", group = "03S", channel = "증권C", market = "STK" }
-IC04S = { interface = "IFMSSTD0004", group = "04S", channel = "증권C", market = "STK" }
-ID03F = { interface = "IFMSRID0010", group = "03F", channel = "파생A", market = "DRV" }
-ID05F = { interface = "IFMSRID0010", group = "05F", channel = "파생A", market = "DRV" }
-ID07F = { interface = "IFMSRID0010", group = "07F", channel = "파생A", market = "DRV" }
-ID12F = { interface = "IFMSRID0010", group = "12F", channel = "파생A", market = "DRV" }
-ID15F = { interface = "IFMSRID0010", group = "15F", channel = "파생A", market = "DRV" }
-ID16F = { interface = "IFMSRID0010", group = "16F", channel = "파생A", market = "DRV" }
-IE01Q = { interface = "IFMSRPD0066", group = "01Q", channel = "증권B", market = "KSQ" }
-IE01S = { interface = "IFMSRPD0066", group = "01S", channel = "증권A", market = "STK" }
-IE03S = { interface = "IFMSRPD0066", group = "03S", channel = "증권C", market = "STK" }
-IE04S = { interface = "IFMSRPD0066", group = "04S", channel = "증권C", market = "STK" }
-IF01F = { interface = "IFMSRPD0068", group = "01F", channel = "파생A", market = "DRV" }
-IF01Q = { interface = "IFMSRPD0068", group = "01Q", channel = "증권B", market = "KSQ" }
-IF01S = { interface = "IFMSRPD0068", group = "01S", channel = "증권A", market = "STK" }
-IF02F = { interface = "IFMSRPD0068", group = "02F", channel = "파생A", market = "DRV" }
-IF02S = { interface = "IFMSRPD0068", group = "02S", channel = "증권C", market = "STK" }
-IF03F = { interface = "IFMSRPD0068", group = "03F", channel = "파생A", market = "DRV" }
-IF03S = { interface = "IFMSRPD0068", group = "03S", channel = "증권C", market = "STK" }
-IF04F = { interface = "IFMSRPD0068", group = "04F", channel = "파생A", market = "DRV" }
-IF04S = { interface = "IFMSRPD0068", group = "04S", channel = "증권C", market = "STK" }
-IF05F = { interface = "IFMSRPD0068", group = "05F", channel = "파생A", market = "DRV" }
-IF06F = { interface = "IFMSRPD0068", group = "06F", channel = "파생A", market = "DRV" }
-IF07F = { interface = "IFMSRPD0068", group = "07F", channel = "파생A", market = "DRV" }
-IF08F = { interface = "IFMSRPD0068", group = "08F", channel = "파생A", market = "DRV" }
-IF09F = { interface = "IFMSRPD0068", group = "09F", channel = "파생A", market = "DRV" }
-IF10F = { interface = "IFMSRPD0068", group = "10F", channel = "파생A", market = "DRV" }
-IF11F = { interface = "IFMSRPD0068", group = "11F", channel = "파생A", market = "DRV" }
-IF12F = { interface = "IFMSRPD0068", group = "12F", channel = "파생A", market = "DRV" }
-IF13F = { interface = "IFMSRPD0068", group = "13F", channel = "파생A", market = "DRV" }
-IF14F = { interface = "IFMSRPD0068", group = "14F", channel = "파생B", market = "DRV" }
-IF15F = { interface = "IFMSRPD0068", group = "15F", channel = "파생A", market = "DRV" }
-IF16F = { interface = "IFMSRPD0068", group = "16F", channel = "파생A", market = "DRV" }
-J001Q = { interface = "IFMSSTD0010", group = "01Q", channel = "증권B", market = "KSQ" }
-J001S = { interface = "IFMSSTD0010", group = "01S", channel = "증권A", market = "STK" }
-J9077 = { interface = "IFMSRID0038", group = "077", channel = "채권A", market = "BND" }
-JA077 = { interface = "IFMSRID0039", group = "077", channel = "채권A", market = "BND" }
-JB077 = { interface = "IFMSRID0040", group = "077", channel = "채권A", market = "BND" }
-LK000 = { interface = "IFNDRCY0001", group = "000", channel = "", market = "" }
-M200G = { interface = "IFMSRID0035", group = "00G", channel = "일반A", market = "CMD", also = ["IFMSRID0036"] }
-M401B = { interface = "IFMSRPD0019", group = "01B", channel = "채권A", market = "BND" }
-M401E = { interface = "IFMSRPD0019", group = "01E", channel = "일반A", market = "ETS" }
-M401F = { interface = "IFMSRPD0019", group = "01F", channel = "파생A", market = "DRV" }
-M401G = { interface = "IFMSRPD0019", group = "01G", channel = "일반A", market = "CMD" }
-M401K = { interface = "IFMSRPD0019", group = "01K", channel = "채권A", market = "KTS" }
-M401M = { interface = "IFMSRPD0019", group = "01M", channel = "채권A", market = "SMB" }
-M401Q = { interface = "IFMSRPD0019", group = "01Q", channel = "증권B", market = "KSQ" }
-M401R = { interface = "IFMSRPD0019", group = "01R", channel = "채권A", market = "RPO" }
-M401S = { interface = "IFMSRPD0019", group = "01S", channel = "증권A", market = "STK" }
-M401X = { interface = "IFMSRPD0019", group = "01X", channel = "증권B", market = "KNX" }
-M402F = { interface = "IFMSRPD0019", group = "02F", channel = "파생A", market = "DRV" }
-M402S = { interface = "IFMSRPD0019", group = "02S", channel = "증권C", market = "STK" }
-M403F = { interface = "IFMSRPD0019", group = "03F", channel = "파생A", market = "DRV" }
-M403S = { interface = "IFMSRPD0019", group = "03S", channel = "증권C", market = "STK" }
-M404F = { interface = "IFMSRPD0019", group = "04F", channel = "파생A", market = "DRV" }
-M404S = { interface = "IFMSRPD0019", group = "04S", channel = "증권C", market = "STK" }
-M405F = { interface = "IFMSRPD0019", group = "05F", channel = "파생A", market = "DRV" }
-M406F = { interface = "IFMSRPD0019", group = "06F", channel = "파생A", market = "DRV" }
-M407F = { interface = "IFMSRPD0019", group = "07F", channel = "파생A", market = "DRV" }
-M408F = { interface = "IFMSRPD0019", group = "08F", channel = "파생A", market = "DRV" }
-M409F = { interface = "IFMSRPD0019", group = "09F", channel = "파생A", market = "DRV" }
-M410F = { interface = "IFMSRPD0019", group = "10F", channel = "파생A", market = "DRV" }
-M411F = { interface = "IFMSRPD0019", group = "11F", channel = "파생A", market = "DRV" }
-M412F = { interface = "IFMSRPD0019", group = "12F", channel = "파생A", market = "DRV" }
-M413F = { interface = "IFMSRPD0019", group = "13F", channel = "파생A", market = "DRV" }
-M414F = { interface = "IFMSRPD0019", group = "14F", channel = "파생B", market = "DRV" }
-M415F = { interface = "IFMSRPD0019", group = "15F", channel = "파생A", market = "DRV" }
-M416F = { interface = "IFMSRPD0019", group = "16F", channel = "파생A", market = "DRV" }
-M502S = { interface = "IFMSRID0002", group = "02S", channel = "증권C", market = "STK" }
-M602S = { interface = "IFMSBTD0006", group = "02S", channel = "증권C", market = "STK" }
-M701F = { interface = "IFMSRPD0064", group = "01F", channel = "파생A", market = "DRV" }
-M703F = { interface = "IFMSRPD0064", group = "03F", channel = "파생A", market = "DRV" }
-M706F = { interface = "IFMSRPD0064", group = "06F", channel = "파생A", market = "DRV" }
-M711F = { interface = "IFMSRPD0064", group = "11F", channel = "파생A", market = "DRV" }
-M716F = { interface = "IFMSRPD0064", group = "16F", channel = "파생A", market = "DRV" }
-M900Q = { interface = "IFMSBTD0012", group = "00Q", channel = "증권B", market = "KSQ" }
-M900S = { interface = "IFMSBTD0012", group = "00S", channel = "증권A", market = "STK" }
-M900X = { interface = "IFMSBTD0012", group = "00X", channel = "증권B", market = "KNX" }
-N703F = { interface = "IFMSRID0012", group = "03F", channel = "파생A", market = "DRV" }
-N705F = { interface = "IFMSRID0012", group = "05F", channel = "파생A", market = "DRV" }
-N707F = { interface = "IFMSRID0012", group = "07F", channel = "파생A", market = "DRV" }
-N712F = { interface = "IFMSRID0012", group = "12F", channel = "파생A", market = "DRV" }
-N715F = { interface = "IFMSRID0012", group = "15F", channel = "파생A", market = "DRV" }
-N716F = { interface = "IFMSRID0012", group = "16F", channel = "파생A", market = "DRV" }
-O401Q = { interface = "IFMSRID0001", group = "01Q", channel = "증권B", market = "KSQ" }
-O401S = { interface = "IFMSRID0001", group = "01S", channel = "증권A", market = "STK" }
-O401X = { interface = "IFMSRID0001", group = "01X", channel = "증권B", market = "KNX" }
-O402S = { interface = "IFMSRID0001", group = "02S", channel = "증권C", market = "STK" }
-O403S = { interface = "IFMSRID0001", group = "03S", channel = "증권C", market = "STK" }
-O404S = { interface = "IFMSRID0001", group = "04S", channel = "증권C", market = "STK" }
-O601F = { interface = "IFMSRPD0017", group = "01F", channel = "파생A", market = "DRV" }
-O601Q = { interface = "IFMSRPD0017", group = "01Q", channel = "증권B", market = "KSQ" }
-O601S = { interface = "IFMSRPD0017", group = "01S", channel = "증권A", market = "STK" }
-O601X = { interface = "IFMSRPD0017", group = "01X", channel = "증권B", market = "KNX" }
-O602F = { interface = "IFMSRPD0017", group = "02F", channel = "파생A", market = "DRV" }
-O603F = { interface = "IFMSRPD0017", group = "03F", channel = "파생A", market = "DRV" }
-O603S = { interface = "IFMSRPD0017", group = "03S", channel = "증권C", market = "STK" }
-O604F = { interface = "IFMSRPD0017", group = "04F", channel = "파생A", market = "DRV" }
-O604S = { interface = "IFMSRPD0017", group = "04S", channel = "증권C", market = "STK" }
-O605F = { interface = "IFMSRPD0017", group = "05F", channel = "파생A", market = "DRV" }
-O606F = { interface = "IFMSRPD0017", group = "06F", channel = "파생A", market = "DRV" }
-O607F = { interface = "IFMSRPD0017", group = "07F", channel = "파생A", market = "DRV" }
-O608F = { interface = "IFMSRPD0017", group = "08F", channel = "파생A", market = "DRV" }
-O609F = { interface = "IFMSRPD0017", group = "09F", channel = "파생A", market = "DRV" }
-O610F = { interface = "IFMSRPD0017", group = "10F", channel = "파생A", market = "DRV" }
-O611F = { interface = "IFMSRPD0017", group = "11F", channel = "파생A", market = "DRV" }
-O612F = { interface = "IFMSRPD0017", group = "12F", channel = "파생A", market = "DRV" }
-O613F = { interface = "IFMSRPD0017", group = "13F", channel = "파생A", market = "DRV" }
-O614F = { interface = "IFMSRPD0017", group = "14F", channel = "파생B", market = "DRV" }
-O615F = { interface = "IFMSRPD0017", group = "15F", channel = "파생A", market = "DRV" }
-O616F = { interface = "IFMSRPD0017", group = "16F", channel = "파생A", market = "DRV" }
-OA01B = { interface = "IFMSRPD0026", group = "01B", channel = "채권A", market = "BND" }
-OA01M = { interface = "IFMSRPD0026", group = "01M", channel = "채권A", market = "SMB" }
-P001Q = { interface = "IFMSSTD0008", group = "01Q", channel = "증권B", market = "KSQ" }
-P001S = { interface = "IFMSSTD0008", group = "01S", channel = "증권A", market = "STK" }
-P103F = { interface = "IFMSRID0011", group = "03F", channel = "파생A", market = "DRV" }
-P112F = { interface = "IFMSRID0011", group = "12F", channel = "파생A", market = "DRV" }
-P115F = { interface = "IFMSRID0011", group = "15F", channel = "파생A", market = "DRV" }
-P116F = { interface = "IFMSRID0011", group = "16F", channel = "파생A", market = "DRV" }
-P200Q = { interface = "IFMSBTD0003", group = "00Q", channel = "증권B", market = "KSQ" }
-P200S = { interface = "IFMSBTD0003", group = "00S", channel = "증권A", market = "STK" }
-P401B = { interface = "IFMSSTD0002", group = "01B", channel = "채권A", market = "BND" }
-P401K = { interface = "IFMSSTD0002", group = "01K", channel = "채권A", market = "KTS" }
-P401M = { interface = "IFMSSTD0002", group = "01M", channel = "채권A", market = "SMB" }
-PA01K = { interface = "IFMSRID0004", group = "01K", channel = "채권A", market = "KTS" }
-PB01K = { interface = "IFMSRID0005", group = "01K", channel = "채권A", market = "KTS" }
-PC01K = { interface = "IFMSRID0006", group = "01K", channel = "채권A", market = "KTS" }
-Q001X = { interface = "IFMSBTD0015", group = "01X", channel = "증권B", market = "KNX" }
-Q201F = { interface = "IFMSRPD0042", group = "01F", channel = "파생A", market = "DRV" }
-Q202F = { interface = "IFMSRPD0042", group = "02F", channel = "파생A", market = "DRV" }
-Q203F = { interface = "IFMSRPD0042", group = "03F", channel = "파생A", market = "DRV" }
-Q204F = { interface = "IFMSRPD0042", group = "04F", channel = "파생A", market = "DRV" }
-Q206F = { interface = "IFMSRPD0042", group = "06F", channel = "파생A", market = "DRV" }
-Q208F = { interface = "IFMSRPD0042", group = "08F", channel = "파생A", market = "DRV" }
-Q209F = { interface = "IFMSRPD0042", group = "09F", channel = "파생A", market = "DRV" }
-Q210F = { interface = "IFMSRPD0042", group = "10F", channel = "파생A", market = "DRV" }
-Q211F = { interface = "IFMSRPD0042", group = "11F", channel = "파생A", market = "DRV" }
-Q212F = { interface = "IFMSRPD0042", group = "12F", channel = "파생A", market = "DRV" }
-Q216F = { interface = "IFMSRPD0042", group = "16F", channel = "파생A", market = "DRV" }
-R101E = { interface = "IFMSRPD0054", group = "01E", channel = "일반A", market = "ETS" }
-R101F = { interface = "IFMSRPD0039", group = "01F", channel = "파생A", market = "DRV" }
-R101G = { interface = "IFMSRPD0049", group = "01G", channel = "일반A", market = "CMD" }
-R102F = { interface = "IFMSRPD0039", group = "02F", channel = "파생A", market = "DRV" }
-R103F = { interface = "IFMSRPD0039", group = "03F", channel = "파생A", market = "DRV" }
-R104F = { interface = "IFMSRPD0040", group = "04F", channel = "파생A", market = "DRV" }
-R105F = { interface = "IFMSRPD0040", group = "05F", channel = "파생A", market = "DRV" }
-R106F = { interface = "IFMSRPD0039", group = "06F", channel = "파생A", market = "DRV" }
-R107F = { interface = "IFMSRPD0039", group = "07F", channel = "파생A", market = "DRV" }
-R108F = { interface = "IFMSRPD0039", group = "08F", channel = "파생A", market = "DRV" }
-R109F = { interface = "IFMSRPD0039", group = "09F", channel = "파생A", market = "DRV" }
-R110F = { interface = "IFMSRPD0039", group = "10F", channel = "파생A", market = "DRV" }
-R111F = { interface = "IFMSRPD0039", group = "11F", channel = "파생A", market = "DRV" }
-R112F = { interface = "IFMSRPD0039", group = "12F", channel = "파생A", market = "DRV" }
-R113F = { interface = "IFMSRPD0039", group = "13F", channel = "파생A", market = "DRV" }
-R114F = { interface = "IFMSRPD0039", group = "14F", channel = "파생B", market = "DRV" }
-R115F = { interface = "IFMSRPD0039", group = "15F", channel = "파생A", market = "DRV" }
-R116F = { interface = "IFMSRPD0039", group = "16F", channel = "파생A", market = "DRV" }
-R301B = { interface = "IFMSRPD0020", group = "01B", channel = "채권A", market = "BND" }
-R301K = { interface = "IFMSRPD0020", group = "01K", channel = "채권A", market = "KTS" }
-R301M = { interface = "IFMSRPD0020", group = "01M", channel = "채권A", market = "SMB" }
-R301Q = { interface = "IFMSRPD0020", group = "01Q", channel = "증권B", market = "KSQ" }
-R301R = { interface = "IFMSRPD0020", group = "01R", channel = "채권A", market = "RPO" }
-R301S = { interface = "IFMSRPD0020", group = "01S", channel = "증권A", market = "STK" }
-R301X = { interface = "IFMSRPD0020", group = "01X", channel = "증권B", market = "KNX" }
-R302S = { interface = "IFMSRPD0020", group = "02S", channel = "증권C", market = "STK" }
-R303S = { interface = "IFMSRPD0020", group = "03S", channel = "증권C", market = "STK" }
-R304S = { interface = "IFMSRPD0020", group = "04S", channel = "증권C", market = "STK" }
-R401B = { interface = "IFMSRPD0033", group = "01B", channel = "채권A", market = "BND" }
-R801Q = { interface = "IFMSRPD0014", group = "01Q", channel = "증권B", market = "KSQ" }
-R801S = { interface = "IFMSRPD0014", group = "01S", channel = "증권A", market = "STK" }
-R803S = { interface = "IFMSRPD0014", group = "03S", channel = "증권C", market = "STK" }
-R804S = { interface = "IFMSRPD0014", group = "04S", channel = "증권C", market = "STK" }
-S001R = { interface = "IFMSBTD0019", group = "01R", channel = "채권A", market = "RPO" }
-V101F = { interface = "IFMSRPD0043", group = "01F", channel = "파생A", market = "DRV" }
-V102F = { interface = "IFMSRPD0043", group = "02F", channel = "파생A", market = "DRV" }
-V103F = { interface = "IFMSRPD0043", group = "03F", channel = "파생A", market = "DRV" }
-V104F = { interface = "IFMSRPD0043", group = "04F", channel = "파생A", market = "DRV" }
-V105F = { interface = "IFMSRPD0043", group = "05F", channel = "파생A", market = "DRV" }
-V108F = { interface = "IFMSRPD0043", group = "08F", channel = "파생A", market = "DRV" }
-V109F = { interface = "IFMSRPD0043", group = "09F", channel = "파생A", market = "DRV" }
-V111F = { interface = "IFMSRPD0043", group = "11F", channel = "파생A", market = "DRV" }
-V112F = { interface = "IFMSRPD0043", group = "12F", channel = "파생A", market = "DRV" }
-V113F = { interface = "IFMSRPD0043", group = "13F", channel = "파생A", market = "DRV" }
-V115F = { interface = "IFMSRPD0043", group = "15F", channel = "파생A", market = "DRV" }
-V116F = { interface = "IFMSRPD0043", group = "16F", channel = "파생A", market = "DRV" }
-V600S = { interface = "IFMSBTD0013", group = "00S", channel = "증권C", market = "STK" }
-X100F = { interface = "IFMSBTD0024", group = "00F", channel = "파생B", market = "DRV" }
-X304S = { interface = "IFMSBTD0007", group = "04S", channel = "증권C", market = "STK" }
-X804S = { interface = "IFMSBTD0008", group = "04S", channel = "증권C", market = "STK" }
+A001B = { interface = "IFMSBTD0016", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+A001E = { interface = "IFMSBTD0028", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+A001F = { interface = "IFMSBTD0022", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+A001G = { interface = "IFMSBTD0027", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+A001Q = { interface = "IFMSBTD0001", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A001R = { interface = "IFMSBTD0017", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+A001S = { interface = "IFMSBTD0001", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A001X = { interface = "IFMSBTD0001", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A002F = { interface = "IFMSBTD0022", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+A002S = { interface = "IFMSBTD0001", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A003F = { interface = "IFMSBTD0022", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+A003S = { interface = "IFMSBTD0001", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A004F = { interface = "IFMSBTD0022", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+A004S = { interface = "IFMSBTD0001", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A005F = { interface = "IFMSBTD0022", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+A005S = { interface = "IFMSBTD0001", group = "05S", channel = "", market = "STK", source = "1.26" }
+A006F = { interface = "IFMSBTD0022", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+A007F = { interface = "IFMSBTD0022", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+A008F = { interface = "IFMSBTD0022", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+A009F = { interface = "IFMSBTD0022", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+A010F = { interface = "IFMSBTD0022", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+A011F = { interface = "IFMSBTD0022", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+A012F = { interface = "IFMSBTD0022", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+A013F = { interface = "IFMSBTD0022", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+A014F = { interface = "IFMSBTD0022", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+A015F = { interface = "IFMSBTD0022", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+A016F = { interface = "IFMSBTD0022", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+A017F = { interface = "IFMSBTD0022", group = "17F", channel = "", market = "DRV", source = "1.26" }
+A018F = { interface = "IFMSBTD0022", group = "18F", channel = "", market = "DRV", source = "1.26" }
+A102S = { interface = "IFMSBTD0004", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A104S = { interface = "IFMSBTD0005", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A301B = { interface = "IFMSRPD0027", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+A301E = { interface = "IFMSRPD0052", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+A301F = { interface = "IFMSRPD0036", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+A301G = { interface = "IFMSRPD0047", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+A301K = { interface = "IFMSRPD0027", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+A301M = { interface = "IFMSRPD0027", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+A301Q = { interface = "IFMSRPD0004", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A301S = { interface = "IFMSRPD0004", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A301X = { interface = "IFMSRPD0004", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A302F = { interface = "IFMSRPD0036", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+A302S = { interface = "IFMSRPD0004", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A303F = { interface = "IFMSRPD0036", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+A303S = { interface = "IFMSRPD0004", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A304F = { interface = "IFMSRPD0036", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+A304S = { interface = "IFMSRPD0004", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A305F = { interface = "IFMSRPD0036", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+A306F = { interface = "IFMSRPD0036", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+A307F = { interface = "IFMSRPD0036", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+A308F = { interface = "IFMSRPD0036", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+A309F = { interface = "IFMSRPD0036", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+A310F = { interface = "IFMSRPD0036", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+A311F = { interface = "IFMSRPD0036", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+A312F = { interface = "IFMSRPD0036", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+A313F = { interface = "IFMSRPD0036", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+A314F = { interface = "IFMSRPD0036", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+A315F = { interface = "IFMSRPD0036", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+A316F = { interface = "IFMSRPD0036", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+A317F = { interface = "IFMSRPD0036", group = "17F", channel = "", market = "DRV", source = "1.26" }
+A318F = { interface = "IFMSRPD0036", group = "18F", channel = "", market = "DRV", source = "1.26" }
+A401Q = { interface = "IFMSRPD0011", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A401S = { interface = "IFMSRPD0011", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A401X = { interface = "IFMSRPD0011", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A403S = { interface = "IFMSRPD0011", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A404S = { interface = "IFMSRPD0011", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A405S = { interface = "IFMSRPD0011", group = "05S", channel = "", market = "STK", source = "1.26" }
+A501G = { interface = "IFMSRPD0012", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+A501X = { interface = "IFMSRPD0012", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A601B = { interface = "IFMSRPD0032", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+A601E = { interface = "IFMSRPD0013", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+A601F = { interface = "IFMSRPD0041", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+A601G = { interface = "IFMSRPD0013", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+A601K = { interface = "IFMSRPD0032", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+A601M = { interface = "IFMSRPD0032", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+A601Q = { interface = "IFMSRPD0013", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A601R = { interface = "IFMSRPD0032", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+A601S = { interface = "IFMSRPD0013", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A601X = { interface = "IFMSRPD0013", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A602F = { interface = "IFMSRPD0041", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+A602S = { interface = "IFMSRPD0013", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A603F = { interface = "IFMSRPD0041", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+A603S = { interface = "IFMSRPD0013", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A604F = { interface = "IFMSRPD0041", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+A604S = { interface = "IFMSRPD0013", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A605F = { interface = "IFMSRPD0041", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+A605S = { interface = "IFMSRPD0013", group = "05S", channel = "", market = "STK", source = "1.26" }
+A606F = { interface = "IFMSRPD0041", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+A607F = { interface = "IFMSRPD0041", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+A608F = { interface = "IFMSRPD0041", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+A609F = { interface = "IFMSRPD0041", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+A610F = { interface = "IFMSRPD0041", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+A611F = { interface = "IFMSRPD0041", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+A612F = { interface = "IFMSRPD0041", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+A613F = { interface = "IFMSRPD0041", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+A614F = { interface = "IFMSRPD0041", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+A615F = { interface = "IFMSRPD0041", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+A616F = { interface = "IFMSRPD0041", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+A617F = { interface = "IFMSRPD0041", group = "17F", channel = "", market = "DRV", source = "1.26" }
+A618F = { interface = "IFMSRPD0041", group = "18F", channel = "", market = "DRV", source = "1.26" }
+A701B = { interface = "IFMSRPD0008", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+A701E = { interface = "IFMSRPD0008", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+A701F = { interface = "IFMSRPD0008", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+A701G = { interface = "IFMSRPD0008", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+A701K = { interface = "IFMSRPD0008", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+A701M = { interface = "IFMSRPD0008", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+A701Q = { interface = "IFMSRPD0008", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A701R = { interface = "IFMSRPD0008", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+A701S = { interface = "IFMSRPD0008", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A701X = { interface = "IFMSRPD0008", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A702F = { interface = "IFMSRPD0008", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+A702S = { interface = "IFMSRPD0008", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A703F = { interface = "IFMSRPD0008", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+A703S = { interface = "IFMSRPD0008", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A704F = { interface = "IFMSRPD0008", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+A704S = { interface = "IFMSRPD0008", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A705F = { interface = "IFMSRPD0008", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+A705S = { interface = "IFMSRPD0008", group = "05S", channel = "", market = "ALL", source = "1.26" }
+A706F = { interface = "IFMSRPD0008", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+A707F = { interface = "IFMSRPD0008", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+A708F = { interface = "IFMSRPD0008", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+A709F = { interface = "IFMSRPD0008", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+A710F = { interface = "IFMSRPD0008", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+A711F = { interface = "IFMSRPD0008", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+A712F = { interface = "IFMSRPD0008", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+A713F = { interface = "IFMSRPD0008", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+A714F = { interface = "IFMSRPD0008", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+A715F = { interface = "IFMSRPD0008", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+A716F = { interface = "IFMSRPD0008", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+A717F = { interface = "IFMSRPD0008", group = "17F", channel = "", market = "ALL", source = "1.26" }
+A718F = { interface = "IFMSRPD0008", group = "18F", channel = "", market = "ALL", source = "1.26" }
+A801Q = { interface = "IFMSRPD0018", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A801S = { interface = "IFMSRPD0018", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A801X = { interface = "IFMSRPD0018", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+A802S = { interface = "IFMSRPD0018", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+A803S = { interface = "IFMSRPD0018", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+A804S = { interface = "IFMSRPD0018", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+A805S = { interface = "IFMSRPD0018", group = "05S", channel = "", market = "STK", source = "1.26" }
+A901Q = { interface = "IFMSBTD0014", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+A901S = { interface = "IFMSBTD0014", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+A901X = { interface = "IFMSBTD0014", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+AC01E = { interface = "IFMSSTD0013", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+B001Q = { interface = "IFMSRPD0056", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+B001S = { interface = "IFMSRPD0056", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+B001X = { interface = "IFMSRPD0056", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B201E = { interface = "IFMSRPD0055", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+B201F = { interface = "IFMSRPD0044", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+B201G = { interface = "IFMSRPD0050", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+B201X = { interface = "IFMSRPD0021", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B202F = { interface = "IFMSRPD0044", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+B202S = { interface = "IFMSRPD0022", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+B203F = { interface = "IFMSRPD0044", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+B204F = { interface = "IFMSRPD0044", group = "04F", channel = "", market = "DRV", source = "1.26" }
+B204S = { interface = "IFMSRPD0022", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+B205F = { interface = "IFMSRPD0045", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+B205S = { interface = "IFMSRPD0022", group = "05S", channel = "", market = "STK", source = "1.26" }
+B206F = { interface = "IFMSRPD0044", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+B207F = { interface = "IFMSRPD0044", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+B208F = { interface = "IFMSRPD0044", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+B209F = { interface = "IFMSRPD0044", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+B210F = { interface = "IFMSRPD0044", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+B211F = { interface = "IFMSRPD0044", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+B212F = { interface = "IFMSRPD0044", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+B213F = { interface = "IFMSRPD0044", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+B214F = { interface = "IFMSRPD0044", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+B215F = { interface = "IFMSRPD0044", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+B216F = { interface = "IFMSRPD0044", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+B217F = { interface = "IFMSRPD0044", group = "17F", channel = "", market = "DRV", source = "1.26" }
+B218F = { interface = "IFMSRPD0045", group = "18F", channel = "", market = "DRV", source = "1.26" }
+B501Q = { interface = "IFMSSTD0007", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+B501S = { interface = "IFMSSTD0007", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+B501X = { interface = "IFMSSTD0007", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B601B = { interface = "IFMSRPD0023", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+B601E = { interface = "IFMSRPD0051", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+B601F = { interface = "IFMSRPD0034", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+B601G = { interface = "IFMSRPD0046", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+B601K = { interface = "IFMSRPD0023", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+B601M = { interface = "IFMSRPD0024", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+B601Q = { interface = "IFMSRPD0002", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+B601R = { interface = "IFMSRPD0025", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+B601S = { interface = "IFMSRPD0002", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+B601X = { interface = "IFMSRPD0002", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B602F = { interface = "IFMSRPD0034", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+B603F = { interface = "IFMSRPD0034", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+B604F = { interface = "IFMSRPD0034", group = "04F", channel = "", market = "DRV", source = "1.26" }
+B605F = { interface = "IFMSRPD0035", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+B606F = { interface = "IFMSRPD0034", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+B607F = { interface = "IFMSRPD0034", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+B608F = { interface = "IFMSRPD0034", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+B609F = { interface = "IFMSRPD0034", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+B610F = { interface = "IFMSRPD0034", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+B611F = { interface = "IFMSRPD0034", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+B612F = { interface = "IFMSRPD0034", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+B613F = { interface = "IFMSRPD0034", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+B614F = { interface = "IFMSRPD0034", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+B615F = { interface = "IFMSRPD0034", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+B616F = { interface = "IFMSRPD0034", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+B617F = { interface = "IFMSRPD0034", group = "17F", channel = "", market = "DRV", source = "1.26" }
+B618F = { interface = "IFMSRPD0035", group = "18F", channel = "", market = "DRV", source = "1.26" }
+B702S = { interface = "IFMSRPD0003", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+B703S = { interface = "IFMSRPD0003", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+B704S = { interface = "IFMSRPD0003", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+B705S = { interface = "IFMSRPD0003", group = "05S", channel = "", market = "STK", source = "1.26" }
+B801Q = { interface = "IFMSRPD0063", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+B801S = { interface = "IFMSRPD0063", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+B801X = { interface = "IFMSRPD0063", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B803S = { interface = "IFMSRPD0063", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+B804S = { interface = "IFMSRPD0063", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+B901Q = { interface = "IFMSSTD0006", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+B901S = { interface = "IFMSSTD0006", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+B901X = { interface = "IFMSSTD0006", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+B902S = { interface = "IFMSSTD0006", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+B903S = { interface = "IFMSSTD0006", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+B904S = { interface = "IFMSSTD0006", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+B905S = { interface = "IFMSSTD0006", group = "05S", channel = "", market = "STK", source = "1.26" }
+BN01B = { interface = "IFMSBTD0021", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+C001Q = { interface = "IFMSSTD0001", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+C001S = { interface = "IFMSSTD0001", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+C001X = { interface = "IFMSSTD0001", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+C101G = { interface = "IFMSSTD0003", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+C101Q = { interface = "IFMSSTD0003", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+C101S = { interface = "IFMSSTD0003", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+C101X = { interface = "IFMSSTD0003", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+C102S = { interface = "IFMSSTD0003", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+C103S = { interface = "IFMSSTD0003", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+C104S = { interface = "IFMSSTD0003", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+C105S = { interface = "IFMSSTD0003", group = "05S", channel = "", market = "STK", source = "1.26" }
+C301Q = { interface = "IFMSSTD0009", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+C301S = { interface = "IFMSSTD0009", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+C401E = { interface = "IFMSRPD0061", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+C401F = { interface = "IFMSRPD0059", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+C401G = { interface = "IFMSRPD0060", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+C401K = { interface = "IFMSRPD0057", group = "01K", channel = "", market = "STK", source = "1.26" }
+C401Q = { interface = "IFMSRPD0057", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+C401R = { interface = "IFMSRPD0058", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+C401S = { interface = "IFMSRPD0057", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+C401X = { interface = "IFMSRPD0057", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+C402F = { interface = "IFMSRPD0059", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+C402S = { interface = "IFMSRPD0057", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+C403F = { interface = "IFMSRPD0059", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+C403S = { interface = "IFMSRPD0057", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+C404F = { interface = "IFMSRPD0059", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+C404S = { interface = "IFMSRPD0057", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+C405F = { interface = "IFMSRPD0059", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+C405S = { interface = "IFMSRPD0057", group = "05S", channel = "", market = "STK", source = "1.26" }
+C406F = { interface = "IFMSRPD0059", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+C407F = { interface = "IFMSRPD0059", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+C408F = { interface = "IFMSRPD0059", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+C409F = { interface = "IFMSRPD0059", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+C410F = { interface = "IFMSRPD0059", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+C411F = { interface = "IFMSRPD0059", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+C412F = { interface = "IFMSRPD0059", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+C413F = { interface = "IFMSRPD0059", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+C414F = { interface = "IFMSRPD0059", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+C415F = { interface = "IFMSRPD0059", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+C416F = { interface = "IFMSRPD0059", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+C417F = { interface = "IFMSRPD0059", group = "17F", channel = "", market = "DRV", source = "1.26" }
+C418F = { interface = "IFMSRPD0059", group = "18F", channel = "", market = "DRV", source = "1.26" }
+CA01Q = { interface = "IFMSBTD0002", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+CA01S = { interface = "IFMSBTD0002", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+CB01R = { interface = "IFMSBTD0029", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+E900Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ", source = "1.341" }
+E900S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK", source = "1.341" }
+E900X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX", source = "1.341" }
+E9909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS", source = "1.341" }
+F000Q = { interface = "IFMSRID0037", group = "00Q", channel = "증권A", market = "KSQ", source = "1.341" }
+F000S = { interface = "IFMSRID0037", group = "00S", channel = "증권A", market = "STK", source = "1.341" }
+F000X = { interface = "IFMSRID0037", group = "00X", channel = "증권A", market = "KNX", source = "1.341" }
+F0909 = { interface = "IFMSRID0037", group = "909", channel = "증권A", market = "OTHERS", source = "1.341" }
+F901B = { interface = "IFMSBTD0020", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+F901M = { interface = "IFMSBTD0020", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+FT000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "", source = "1.341" }
+G001M = { interface = "IFMSRID0003", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+G300B = { interface = "IFMSBTD0018", group = "00B", channel = "채권A", market = "BND", source = "1.341" }
+G701B = { interface = "IFMSRPD0029", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+G701E = { interface = "IFMSRPD0053", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+G701F = { interface = "IFMSRPD0037", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+G701G = { interface = "IFMSRPD0048", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+G701K = { interface = "IFMSRPD0029", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+G701M = { interface = "IFMSRPD0030", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+G701R = { interface = "IFMSRPD0031", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+G702F = { interface = "IFMSRPD0037", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+G703F = { interface = "IFMSRPD0037", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+G704F = { interface = "IFMSRPD0037", group = "04F", channel = "", market = "DRV", source = "1.26" }
+G705F = { interface = "IFMSRPD0038", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+G706F = { interface = "IFMSRPD0037", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+G707F = { interface = "IFMSRPD0037", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+G708F = { interface = "IFMSRPD0037", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+G709F = { interface = "IFMSRPD0037", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+G710F = { interface = "IFMSRPD0037", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+G711F = { interface = "IFMSRPD0037", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+G712F = { interface = "IFMSRPD0037", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+G713F = { interface = "IFMSRPD0037", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+G714F = { interface = "IFMSRPD0037", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+G715F = { interface = "IFMSRPD0037", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+G716F = { interface = "IFMSRPD0037", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+G717F = { interface = "IFMSRPD0037", group = "17F", channel = "", market = "DRV", source = "1.26" }
+G718F = { interface = "IFMSRPD0038", group = "18F", channel = "", market = "DRV", source = "1.26" }
+H101F = { interface = "IFMSSTD0005", group = "01F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H102F = { interface = "IFMSSTD0005", group = "02F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H103F = { interface = "IFMSSTD0005", group = "03F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H104F = { interface = "IFMSSTD0005", group = "04F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H105F = { interface = "IFMSSTD0005", group = "05F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H106F = { interface = "IFMSSTD0005", group = "06F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H107F = { interface = "IFMSSTD0005", group = "07F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H108F = { interface = "IFMSSTD0005", group = "08F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H109F = { interface = "IFMSSTD0005", group = "09F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H110F = { interface = "IFMSSTD0005", group = "10F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H111F = { interface = "IFMSSTD0005", group = "11F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H112F = { interface = "IFMSSTD0005", group = "12F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H113F = { interface = "IFMSSTD0005", group = "13F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H114F = { interface = "IFMSSTD0005", group = "14F", channel = "파생B", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H115F = { interface = "IFMSSTD0005", group = "15F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H116F = { interface = "IFMSSTD0005", group = "16F", channel = "파생A", market = "DRV", source = "1.341", also = ["IFMSRID0007"] }
+H201F = { interface = "IFMSRID0008", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+H202F = { interface = "IFMSRID0008", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+H203F = { interface = "IFMSRID0008", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+H204F = { interface = "IFMSRID0008", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+H205F = { interface = "IFMSRID0008", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+H206F = { interface = "IFMSRID0008", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+H207F = { interface = "IFMSRID0008", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+H208F = { interface = "IFMSRID0008", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+H209F = { interface = "IFMSRID0008", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+H210F = { interface = "IFMSRID0008", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+H211F = { interface = "IFMSRID0008", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+H212F = { interface = "IFMSRID0008", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+H213F = { interface = "IFMSRID0008", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+H214F = { interface = "IFMSRID0008", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+H215F = { interface = "IFMSRID0008", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+H216F = { interface = "IFMSRID0008", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+H217F = { interface = "IFMSRID0008", group = "17F", channel = "", market = "DRV", source = "1.26" }
+H218F = { interface = "IFMSRID0008", group = "18F", channel = "", market = "DRV", source = "1.26" }
+H301F = { interface = "IFMSRID0009", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+H302F = { interface = "IFMSRID0009", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+H304F = { interface = "IFMSRID0009", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+H306F = { interface = "IFMSRID0009", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+H308F = { interface = "IFMSRID0009", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+H309F = { interface = "IFMSRID0009", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+H310F = { interface = "IFMSRID0009", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+H311F = { interface = "IFMSRID0009", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+H313F = { interface = "IFMSRID0009", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+H314F = { interface = "IFMSRID0009", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+H404F = { interface = "IFMSBTD0025", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+H405F = { interface = "IFMSBTD0025", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+H418F = { interface = "IFMSBTD0025", group = "18F", channel = "", market = "DRV", source = "1.26" }
+H506F = { interface = "IFMSRID0013", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+H599F = { interface = "IFMSRID0013", group = "99F", channel = "파생A", market = "DRV", source = "1.341" }
+H606F = { interface = "IFMSBTD0026", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+HA06F = { interface = "IFMSRID0041", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+HE000 = { interface = "IFNDRCY0002", group = "000", channel = "", market = "", source = "1.341" }
+I2000 = { interface = "IFMSRPD0001", group = "000", channel = "ALL", market = "", source = "1.341" }
+I501Q = { interface = "IFMSBTD0009", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+I501S = { interface = "IFMSBTD0009", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+I501X = { interface = "IFMSBTD0009", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+I503S = { interface = "IFMSBTD0009", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+I504S = { interface = "IFMSBTD0009", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+I505S = { interface = "IFMSBTD0009", group = "05S", channel = "", market = "STK", source = "1.26" }
+I601B = { interface = "IFMSBTD0010", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+I601K = { interface = "IFMSBTD0010", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+I601M = { interface = "IFMSBTD0010", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+I601Q = { interface = "IFMSBTD0010", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+I601R = { interface = "IFMSBTD0010", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+I601S = { interface = "IFMSBTD0010", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+I601X = { interface = "IFMSBTD0010", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+I602S = { interface = "IFMSBTD0010", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+I603S = { interface = "IFMSBTD0010", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+I604S = { interface = "IFMSBTD0010", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+I605S = { interface = "IFMSBTD0010", group = "05S", channel = "", market = "STK", source = "1.26" }
+I701Q = { interface = "IFMSBTD0011", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+I701S = { interface = "IFMSBTD0011", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+I701X = { interface = "IFMSBTD0011", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+I702S = { interface = "IFMSBTD0011", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+I703S = { interface = "IFMSBTD0011", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+I704S = { interface = "IFMSBTD0011", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+I705S = { interface = "IFMSBTD0011", group = "05S", channel = "", market = "STK", source = "1.26" }
+I801Q = { interface = "IFMSSTD0012", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+I801S = { interface = "IFMSSTD0012", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+I803S = { interface = "IFMSSTD0012", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+I804S = { interface = "IFMSSTD0012", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+I805S = { interface = "IFMSSTD0012", group = "05S", channel = "", market = "STK", source = "1.26" }
+IC01G = { interface = "IFMSSTD0004", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+IC02S = { interface = "IFMSSTD0004", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+IC03S = { interface = "IFMSSTD0004", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+IC04S = { interface = "IFMSSTD0004", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+IC05S = { interface = "IFMSSTD0004", group = "05S", channel = "", market = "STK", source = "1.26" }
+ID03F = { interface = "IFMSRID0010", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+ID05F = { interface = "IFMSRID0010", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+ID07F = { interface = "IFMSRID0010", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+ID12F = { interface = "IFMSRID0010", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+ID15F = { interface = "IFMSRID0010", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+ID16F = { interface = "IFMSRID0010", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+ID17F = { interface = "IFMSRID0010", group = "17F", channel = "", market = "DRV", source = "1.26" }
+ID18F = { interface = "IFMSRID0010", group = "18F", channel = "", market = "DRV", source = "1.26" }
+IE01Q = { interface = "IFMSRPD0066", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+IE01S = { interface = "IFMSRPD0066", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+IE03S = { interface = "IFMSRPD0066", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+IE04S = { interface = "IFMSRPD0066", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+IE05S = { interface = "IFMSRPD0066", group = "05S", channel = "", market = "STK", source = "1.26" }
+IF01F = { interface = "IFMSRPD0068", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+IF01Q = { interface = "IFMSRPD0068", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+IF01S = { interface = "IFMSRPD0068", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+IF02F = { interface = "IFMSRPD0068", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+IF02S = { interface = "IFMSRPD0068", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+IF03F = { interface = "IFMSRPD0068", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+IF03S = { interface = "IFMSRPD0068", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+IF04F = { interface = "IFMSRPD0068", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+IF04S = { interface = "IFMSRPD0068", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+IF05F = { interface = "IFMSRPD0068", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+IF05S = { interface = "IFMSRPD0068", group = "05S", channel = "", market = "STK", source = "1.26" }
+IF06F = { interface = "IFMSRPD0068", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+IF07F = { interface = "IFMSRPD0068", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+IF08F = { interface = "IFMSRPD0068", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+IF09F = { interface = "IFMSRPD0068", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+IF10F = { interface = "IFMSRPD0068", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+IF11F = { interface = "IFMSRPD0068", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+IF12F = { interface = "IFMSRPD0068", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+IF13F = { interface = "IFMSRPD0068", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+IF14F = { interface = "IFMSRPD0068", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+IF15F = { interface = "IFMSRPD0068", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+IF16F = { interface = "IFMSRPD0068", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+J001Q = { interface = "IFMSSTD0010", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+J001S = { interface = "IFMSSTD0010", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+J9077 = { interface = "IFMSRID0038", group = "077", channel = "채권A", market = "BND", source = "1.341" }
+JA077 = { interface = "IFMSRID0039", group = "077", channel = "채권A", market = "BND", source = "1.341" }
+JB077 = { interface = "IFMSRID0040", group = "077", channel = "채권A", market = "BND", source = "1.341" }
+LK000 = { interface = "IFNDRCY0001", group = "000", channel = "", market = "", source = "1.341" }
+M200G = { interface = "IFMSRID0035", group = "00G", channel = "일반A", market = "CMD", source = "1.341", also = ["IFMSRID0036"] }
+M401B = { interface = "IFMSRPD0019", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+M401E = { interface = "IFMSRPD0019", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+M401F = { interface = "IFMSRPD0019", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+M401G = { interface = "IFMSRPD0019", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+M401K = { interface = "IFMSRPD0019", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+M401M = { interface = "IFMSRPD0019", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+M401Q = { interface = "IFMSRPD0019", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+M401R = { interface = "IFMSRPD0019", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+M401S = { interface = "IFMSRPD0019", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+M401X = { interface = "IFMSRPD0019", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+M402F = { interface = "IFMSRPD0019", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+M402S = { interface = "IFMSRPD0019", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+M403F = { interface = "IFMSRPD0019", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+M403S = { interface = "IFMSRPD0019", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+M404F = { interface = "IFMSRPD0019", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+M404S = { interface = "IFMSRPD0019", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+M405F = { interface = "IFMSRPD0019", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+M405S = { interface = "IFMSRPD0019", group = "05S", channel = "", market = "STK", source = "1.26" }
+M406F = { interface = "IFMSRPD0019", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+M407F = { interface = "IFMSRPD0019", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+M408F = { interface = "IFMSRPD0019", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+M409F = { interface = "IFMSRPD0019", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+M410F = { interface = "IFMSRPD0019", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+M411F = { interface = "IFMSRPD0019", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+M412F = { interface = "IFMSRPD0019", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+M413F = { interface = "IFMSRPD0019", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+M414F = { interface = "IFMSRPD0019", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+M415F = { interface = "IFMSRPD0019", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+M416F = { interface = "IFMSRPD0019", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+M417F = { interface = "IFMSRPD0019", group = "17F", channel = "", market = "STK", source = "1.26" }
+M418F = { interface = "IFMSRPD0019", group = "18F", channel = "", market = "STK", source = "1.26" }
+M502S = { interface = "IFMSRID0002", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+M602S = { interface = "IFMSBTD0006", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+M701F = { interface = "IFMSRPD0064", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+M703F = { interface = "IFMSRPD0064", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+M706F = { interface = "IFMSRPD0064", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+M711F = { interface = "IFMSRPD0064", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+M716F = { interface = "IFMSRPD0064", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+M900Q = { interface = "IFMSBTD0012", group = "00Q", channel = "증권B", market = "KSQ", source = "1.341" }
+M900S = { interface = "IFMSBTD0012", group = "00S", channel = "증권A", market = "STK", source = "1.341" }
+M900X = { interface = "IFMSBTD0012", group = "00X", channel = "증권B", market = "KNX", source = "1.341" }
+N703F = { interface = "IFMSRID0012", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+N705F = { interface = "IFMSRID0012", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+N707F = { interface = "IFMSRID0012", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+N712F = { interface = "IFMSRID0012", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+N715F = { interface = "IFMSRID0012", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+N716F = { interface = "IFMSRID0012", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+N717F = { interface = "IFMSRID0012", group = "17F", channel = "", market = "DRV", source = "1.26" }
+N718F = { interface = "IFMSRID0012", group = "18F", channel = "", market = "DRV", source = "1.26" }
+O401Q = { interface = "IFMSRID0001", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+O401S = { interface = "IFMSRID0001", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+O401X = { interface = "IFMSRID0001", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+O402S = { interface = "IFMSRID0001", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+O403S = { interface = "IFMSRID0001", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+O404S = { interface = "IFMSRID0001", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+O601F = { interface = "IFMSRPD0017", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+O601Q = { interface = "IFMSRPD0017", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+O601S = { interface = "IFMSRPD0017", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+O601X = { interface = "IFMSRPD0017", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+O602F = { interface = "IFMSRPD0017", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+O603F = { interface = "IFMSRPD0017", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+O603S = { interface = "IFMSRPD0017", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+O604F = { interface = "IFMSRPD0017", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+O604S = { interface = "IFMSRPD0017", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+O605F = { interface = "IFMSRPD0017", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+O605S = { interface = "IFMSRPD0017", group = "05S", channel = "", market = "STK", source = "1.26" }
+O606F = { interface = "IFMSRPD0017", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+O607F = { interface = "IFMSRPD0017", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+O608F = { interface = "IFMSRPD0017", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+O609F = { interface = "IFMSRPD0017", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+O610F = { interface = "IFMSRPD0017", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+O611F = { interface = "IFMSRPD0017", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+O612F = { interface = "IFMSRPD0017", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+O613F = { interface = "IFMSRPD0017", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+O614F = { interface = "IFMSRPD0017", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+O615F = { interface = "IFMSRPD0017", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+O616F = { interface = "IFMSRPD0017", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+O617F = { interface = "IFMSRPD0017", group = "17F", channel = "", market = "STK", source = "1.26" }
+O618F = { interface = "IFMSRPD0017", group = "18F", channel = "", market = "STK", source = "1.26" }
+OA01B = { interface = "IFMSRPD0026", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+OA01M = { interface = "IFMSRPD0026", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+P001Q = { interface = "IFMSSTD0008", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+P001S = { interface = "IFMSSTD0008", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+P103F = { interface = "IFMSRID0011", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+P112F = { interface = "IFMSRID0011", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+P115F = { interface = "IFMSRID0011", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+P116F = { interface = "IFMSRID0011", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+P117F = { interface = "IFMSRID0011", group = "17F", channel = "", market = "DRV", source = "1.26" }
+P200Q = { interface = "IFMSBTD0003", group = "00Q", channel = "증권B", market = "KSQ", source = "1.341" }
+P200S = { interface = "IFMSBTD0003", group = "00S", channel = "증권A", market = "STK", source = "1.341" }
+P401B = { interface = "IFMSSTD0002", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+P401K = { interface = "IFMSSTD0002", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+P401M = { interface = "IFMSSTD0002", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+PA01K = { interface = "IFMSRID0004", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+PB01K = { interface = "IFMSRID0005", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+PC01K = { interface = "IFMSRID0006", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+Q001X = { interface = "IFMSBTD0015", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+Q201F = { interface = "IFMSRPD0042", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+Q202F = { interface = "IFMSRPD0042", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+Q203F = { interface = "IFMSRPD0042", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+Q204F = { interface = "IFMSRPD0042", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+Q206F = { interface = "IFMSRPD0042", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+Q208F = { interface = "IFMSRPD0042", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+Q209F = { interface = "IFMSRPD0042", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+Q210F = { interface = "IFMSRPD0042", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+Q211F = { interface = "IFMSRPD0042", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+Q212F = { interface = "IFMSRPD0042", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+Q216F = { interface = "IFMSRPD0042", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+Q217F = { interface = "IFMSRPD0042", group = "17F", channel = "", market = "DRV", source = "1.26" }
+R101E = { interface = "IFMSRPD0054", group = "01E", channel = "일반A", market = "ETS", source = "1.341" }
+R101F = { interface = "IFMSRPD0039", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+R101G = { interface = "IFMSRPD0049", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
+R102F = { interface = "IFMSRPD0039", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+R103F = { interface = "IFMSRPD0039", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+R104F = { interface = "IFMSRPD0039", group = "04F", channel = "", market = "DRV", source = "1.26" }
+R105F = { interface = "IFMSRPD0040", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+R106F = { interface = "IFMSRPD0039", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
+R107F = { interface = "IFMSRPD0039", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
+R108F = { interface = "IFMSRPD0039", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+R109F = { interface = "IFMSRPD0039", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+R110F = { interface = "IFMSRPD0039", group = "10F", channel = "파생A", market = "DRV", source = "1.341" }
+R111F = { interface = "IFMSRPD0039", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+R112F = { interface = "IFMSRPD0039", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+R113F = { interface = "IFMSRPD0039", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+R114F = { interface = "IFMSRPD0039", group = "14F", channel = "파생B", market = "DRV", source = "1.341" }
+R115F = { interface = "IFMSRPD0039", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+R116F = { interface = "IFMSRPD0039", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+R117F = { interface = "IFMSRPD0039", group = "17F", channel = "", market = "DRV", source = "1.26" }
+R118F = { interface = "IFMSRPD0040", group = "18F", channel = "", market = "DRV", source = "1.26" }
+R301B = { interface = "IFMSRPD0020", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+R301K = { interface = "IFMSRPD0020", group = "01K", channel = "채권A", market = "KTS", source = "1.341" }
+R301M = { interface = "IFMSRPD0020", group = "01M", channel = "채권A", market = "SMB", source = "1.341" }
+R301Q = { interface = "IFMSRPD0020", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+R301R = { interface = "IFMSRPD0020", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+R301S = { interface = "IFMSRPD0020", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+R301X = { interface = "IFMSRPD0020", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
+R302S = { interface = "IFMSRPD0020", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
+R303S = { interface = "IFMSRPD0020", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+R304S = { interface = "IFMSRPD0020", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+R305S = { interface = "IFMSRPD0020", group = "05S", channel = "", market = "STK", source = "1.26" }
+R401B = { interface = "IFMSRPD0033", group = "01B", channel = "채권A", market = "BND", source = "1.341" }
+R801Q = { interface = "IFMSRPD0014", group = "01Q", channel = "증권B", market = "KSQ", source = "1.341" }
+R801S = { interface = "IFMSRPD0014", group = "01S", channel = "증권A", market = "STK", source = "1.341" }
+R803S = { interface = "IFMSRPD0014", group = "03S", channel = "증권C", market = "STK", source = "1.341" }
+R804S = { interface = "IFMSRPD0014", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+R805S = { interface = "IFMSRPD0014", group = "05S", channel = "", market = "STK", source = "1.26" }
+S001R = { interface = "IFMSBTD0019", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
+V101F = { interface = "IFMSRPD0043", group = "01F", channel = "파생A", market = "DRV", source = "1.341" }
+V102F = { interface = "IFMSRPD0043", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
+V103F = { interface = "IFMSRPD0043", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
+V104F = { interface = "IFMSRPD0043", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
+V105F = { interface = "IFMSRPD0043", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
+V108F = { interface = "IFMSRPD0043", group = "08F", channel = "파생A", market = "DRV", source = "1.341" }
+V109F = { interface = "IFMSRPD0043", group = "09F", channel = "파생A", market = "DRV", source = "1.341" }
+V111F = { interface = "IFMSRPD0043", group = "11F", channel = "파생A", market = "DRV", source = "1.341" }
+V112F = { interface = "IFMSRPD0043", group = "12F", channel = "파생A", market = "DRV", source = "1.341" }
+V113F = { interface = "IFMSRPD0043", group = "13F", channel = "파생A", market = "DRV", source = "1.341" }
+V115F = { interface = "IFMSRPD0043", group = "15F", channel = "파생A", market = "DRV", source = "1.341" }
+V116F = { interface = "IFMSRPD0043", group = "16F", channel = "파생A", market = "DRV", source = "1.341" }
+V117F = { interface = "IFMSRPD0043", group = "17F", channel = "", market = "DRV", source = "1.26" }
+V118F = { interface = "IFMSRPD0043", group = "18F", channel = "", market = "DRV", source = "1.26" }
+V600S = { interface = "IFMSBTD0013", group = "00S", channel = "증권C", market = "STK", source = "1.341" }
+X100F = { interface = "IFMSBTD0024", group = "00F", channel = "파생B", market = "DRV", source = "1.341" }
+X304S = { interface = "IFMSBTD0007", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
+X804S = { interface = "IFMSBTD0008", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
 
 # **같은 trcode 가 회선마다 다른 전문으로 온다.** 5바이트만 보고는 못 고른다 —
 # 예: B201S 는 증권A 회선에서 685B, 주식파생 기초자산 회선에서 136B.
 # 이 코드들은 [code] 에 없다. 어느 회선에서 받았는지를 같이 넘겨야 한다.
 [code_by_channel]
+A401E = { group = "01E", by = { "일반A" = "IFMSRPD0065" } }
 B201Q = { group = "01Q", by = { "주식파생" = "IFMSRPD0062", "증권B" = "IFMSRPD0021" } }
 B201S = { group = "01S", by = { "주식파생" = "IFMSRPD0062", "증권A" = "IFMSRPD0021" } }
 B203S = { group = "03S", by = { "주식파생" = "IFMSRPD0062", "증권C" = "IFMSRPD0022" } }
+C401B = { group = "01B", by = { "채권A" = "IFMSRPD0067" } }

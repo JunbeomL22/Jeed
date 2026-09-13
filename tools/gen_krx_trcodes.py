@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
-"""KRX 표준서 인터페이스목록 → conf/krx_trcodes.toml 생성기.
+"""KRX 표준서 → conf/krx_trcodes.toml 생성기.
 
     python tools/gen_krx_trcodes.py
 
-trcode 사전만 만든다. **멀티캐스트 IP·포트는 생성하지 않는다** — 회선 배정이라
-표준서에 적힌 값이 우리 회선에 그대로 오지 않는다. 배포 설정은 사람이 적는다.
+**두 표준서를 합친다.** 둘은 갱신 주기가 다르고, 새 상품은 송신채널 쪽에 먼저 뜬다:
+
+| 원본 | 주는 것 | 판 |
+|---|---|---|
+| 접속표준서(정보분배-UDP_TCP실시간) 인터페이스목록 | 인터페이스 → 이름·**길이**·주기 | v1.341 |
+| 접속표준서(UDP) 공통정보(송신채널_정보구분) 전용선 시트 | 인터페이스 **이름 → trcode** | v1.26 |
+| 〃 정보구분코드 시트 | 상품군 3바이트 → 이름 | v1.26 |
+
+정보분배 v1.341 에는 코스닥150 위클리옵션(`17F`)도 개별주식 위클리옵션(`18F`)도 없는데
+회선에는 온다. 송신채널 v1.26 에는 둘 다 있다. 그래서 길이는 v1.341 에서, 코드 목록은
+양쪽 합집합으로 만든다. 두 문서를 잇는 열쇠는 **인터페이스 이름**이다.
+
+**멀티캐스트 IP·포트는 생성하지 않는다.** 송신채널 문서에 들어 있지만 읽지 않는다 —
+회선 배정이라 표준서 값이 우리 회선에 그대로 오지 않고, 생성기가 만들어내면 틀린 값이
+조용히 박힌다. 배포 설정(`conf/krx.toml`)은 사람이 적는다.
 
 Rust 가 아니라 파이썬인 이유: 표준서 버전이 올라갈 때만 한 번 도는 스크립트다.
-`calamine` 을 워크스페이스 의존성으로 들이는 값을 못 한다. 결과 TOML 은 커밋되고,
+`calamine` 을 워크스페이스 의존성으로 들이는 값을 못 한다. 결과 TOML 이 커밋되고,
 그게 빌드가 보는 유일한 입력이다.
 
 trcode 5바이트 = [데이터구분 2][정보구분+시장구분 3].
@@ -29,34 +42,77 @@ except ImportError:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "documents/krx/접속표준서(정보분배-UDP_TCP실시간)_v1.341-배포용.xlsx"
 SPEC_VERSION = "1.341"
+CHANNELS = ROOT / "documents/krx/접속표준서(UDP) 공통정보(송신채널_정보구분)_v1.26.xlsx"
+CHANNELS_VERSION = "1.26"
 OUT = ROOT / "conf/krx_trcodes.toml"
 
-# 인터페이스목록 시트의 컬럼 (0-based). 헤더가 두 줄 병합이라 인덱스로 잡는다.
+# 인터페이스목록 시트 컬럼 (0-based). 헤더가 두 줄 병합이라 인덱스로 잡는다.
 COL_ID, COL_NAME, COL_PERIOD, COL_TRCODE, COL_MARKET, COL_LENGTH = 1, 2, 6, 8, 10, 30
 FIRST_DATA_ROW = 5
+
+# 전용선 시트 컬럼. **3(그룹IP)·4(운용포트)는 일부러 읽지 않는다.**
+CH_NAMES, CH_CODES = 8, 9
 
 CODE_RE = re.compile(r"^[A-Z0-9]{5}$")
 # "(파생A) DRV : G701F, G702F"  /  "          KNX : B001X"  /  "LK000"
 LINE_RE = re.compile(r"^(?:\((?P<grp>[^)]+)\)\s*)?(?:(?P<mkt>[A-Z]{2,8})\s*:)?\s*(?P<codes>.*)$")
 
+# 파생 호가 전문의 단수는 상품군이 정한다. 근거는 송신채널 v1.26 전용선 시트가
+# "파생 우선호가 (우선호가 10단계)" 에 붙여 놓은 코드 목록이고, 이 스크립트가
+# 아래 기대값과 대조해서 달라지면 경고한다 — 디코더의 `depth_for()` 가 이 집합이다.
+# `04F`(주식선물)는 빠져 있다 — 상품은 10단이지만 시세는 5단으로 잘라 보낸다(CLAUDE.md).
+# 송신채널 v1.26 은 `B604F` 를 5단·10단 목록에 **둘 다** 올려 두므로 여기서 빼 준다.
+TEN_DEEP_EXPECTED = {"05F", "18F"}
+
+# 원장은 10단이지만 **시세는 5단으로 잘라서** 오는 상품군. 송신채널 v1.26 이 `B604F` 를
+# 5단·10단 목록에 둘 다 올려 두는 탓에 표만 보면 못 가른다 (CLAUDE.md).
+TRUNCATED_TO_FIVE = {"04F"}
+
+# jeed-krx 가 디코드하는 두 계열. `[derivative_depth]` 는 이것만 보고 만든다 —
+# 디코더의 `depth_for()` 가 덮는 범위와 같아야 하기 때문이다.
+DEPTH_INTERFACE_NAMES = {
+    "파생 우선호가 (우선호가 5단계)": 5,
+    "파생 우선호가 (우선호가 10단계)": 10,
+    "파생 체결 + 우선호가 (우선호가 5단계)": 5,
+    "파생 체결 + 우선호가 (우선호가 10단계)": 10,
+}
+
+# 5단/10단이 갈리는 파생 호가 계열 **전부**. 주식선물 잘림을 풀 때 쓴다.
+# 아직 디코더가 없는 R1(장운영TS+호가)·B2(Snapshot)도 같은 규칙을 탄다.
+ALL_DEPTH_INTERFACE_NAMES = {
+    **DEPTH_INTERFACE_NAMES,
+    "파생 장운영TS + 우선호가 (우선호가 5단계)": 5,
+    "파생 장운영TS + 우선호가 (우선호가 10단계)": 10,
+    "파생 시세 Snapshot (우선호가 5단계)": 5,
+    "파생 시세 Snapshot (우선호가 10단계)": 10,
+}
+
+
+def norm(s) -> str:
+    return " ".join(str(s or "").split())
+
 
 def toml_str(s: str) -> str:
     """TOML 기본 문자열. 개행은 공백으로 접는다 (엑셀 셀에 줄바꿈이 섞여 있다)."""
-    s = " ".join(str(s).split())
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + norm(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def load_product_groups(wb) -> dict[str, str]:
-    """별첨-정보구분코드: 3바이트 정보구분+시장구분 → 한글 이름."""
-    ws = wb["별첨-정보구분코드"]
+def load_product_groups(wb_channels, wb_spec) -> dict[str, str]:
+    """3바이트 상품군 → 한글 이름.
+
+    송신채널 v1.26 의 정보구분코드 시트가 최신이다 (`17F`/`18F`/`05S` 가 여기 있고
+    정보분배 v1.341 별첨에는 없다). 별첨에만 있는 항목은 뒤에서 채운다.
+    """
     out: dict[str, str] = {}
-    for row in ws.iter_rows(min_row=4, values_only=True):
-        code, name = row[5], row[4]
-        if not code or not name:
-            continue
-        code = str(code).strip()
-        if len(code) == 3:
-            out.setdefault(code, " ".join(str(name).split()))
+    for wb, sheet in ((wb_channels, "정보구분코드"), (wb_spec, "별첨-정보구분코드")):
+        ws = wb[sheet]
+        for row in ws.iter_rows(min_row=4, values_only=True):
+            code, name = row[5], row[4]
+            if not code or not name:
+                continue
+            code = str(code).strip()
+            if len(code) == 3:
+                out.setdefault(code, norm(name))
     return out
 
 
@@ -87,6 +143,28 @@ def parse_trcode_cell(cell: str) -> list[tuple[str, str | None, str | None]]:
     return out
 
 
+def load_channel_codes(wb) -> dict[str, set[str]]:
+    """전용선 시트: 인터페이스 이름 → trcode 집합.
+
+    `제공정보`(이름)와 `제공정보 코드` 두 컬럼이 줄 단위로 짝을 이룬다.
+    IP·포트 컬럼은 읽지 않는다.
+    """
+    ws = wb["전용선(UDP) 시세상품별 회선별 송신채널정보"]
+    out: dict[str, set[str]] = {}
+    for row in ws.iter_rows(values_only=True):
+        names = str(row[CH_NAMES] or "").split("\n")
+        codes = str(row[CH_CODES] or "").split("\n")
+        for name, code_cell in zip(names, codes):
+            name = norm(name)
+            if not name:
+                continue
+            for tok in re.split(r"[,/]", code_cell):
+                tok = tok.strip()
+                if CODE_RE.match(tok):
+                    out.setdefault(name, set()).add(tok)
+    return out
+
+
 def split_codes(
     seen: dict[str, list[dict]], interfaces: dict[str, dict], warnings: list[str]
 ) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -107,11 +185,25 @@ def split_codes(
     by_channel: dict[str, dict] = {}
 
     for code, entries in seen.items():
+        # 주식선물 계열은 5단·10단 양쪽에 등록돼 있지만 실제로는 5단만 온다.
+        # 길이가 갈리는 것으로 두면 아래에서 회선별 테이블로 떨어지는데, 회선이
+        # 판별자가 아니므로 여기서 먼저 5단으로 확정한다.
+        if code[2:] in TRUNCATED_TO_FIVE:
+            depthful = [
+                e for e in entries
+                if ALL_DEPTH_INTERFACE_NAMES.get(interfaces[e["interface"]]["name"]) is not None
+            ]
+            if len(depthful) == len(entries) and depthful:
+                entries = [
+                    e for e in entries
+                    if ALL_DEPTH_INTERFACE_NAMES[interfaces[e["interface"]]["name"]] == 5
+                ]
+
         uniq: list[dict] = []
         for e in entries:
             if e not in uniq:
                 uniq.append(e)
-        ids = []
+        ids: list[str] = []
         for e in uniq:
             if e["interface"] not in ids:
                 ids.append(e["interface"])
@@ -123,6 +215,7 @@ def split_codes(
                 "channel": uniq[0]["channel"],
                 "market": uniq[0]["market"],
                 "also": [],
+                "source": uniq[0]["source"],
             }
             continue
 
@@ -135,6 +228,7 @@ def split_codes(
                 "channel": uniq[0]["channel"],
                 "market": uniq[0]["market"],
                 "also": ids[1:],
+                "source": uniq[0]["source"],
             }
             continue
 
@@ -157,16 +251,28 @@ def split_codes(
     return codes, by_channel
 
 
+def derivative_depths(name_to_codes: dict[str, set[str]]) -> dict[int, set[str]]:
+    """'파생 우선호가 (우선호가 N단계)' 계열에서 상품군별 단수를 뽑는다."""
+    depths: dict[int, set[str]] = {5: set(), 10: set()}
+    for name, depth in DEPTH_INTERFACE_NAMES.items():
+        for code in name_to_codes.get(name, ()):
+            depths[depth].add(code[2:])
+    return depths
+
+
 def main() -> int:
-    if not SPEC.exists():
-        sys.exit(f"표준서가 없다: {SPEC}")
+    for path in (SPEC, CHANNELS):
+        if not path.exists():
+            sys.exit(f"표준서가 없다: {path}")
 
     wb = openpyxl.load_workbook(SPEC, read_only=True, data_only=True)
-    groups = load_product_groups(wb)
+    wb_ch = openpyxl.load_workbook(CHANNELS, read_only=True, data_only=True)
+    groups = load_product_groups(wb_ch, wb)
+    name_to_codes = load_channel_codes(wb_ch)
     ws = wb["인터페이스목록"]
 
     interfaces: dict[str, dict] = {}
-    # trcode 는 인터페이스에 1:1 이 아니다 (아래 split_codes 주석 참조).
+    name_to_id: dict[str, list[str]] = {}
     seen: dict[str, list[dict]] = {}
     warnings: list[str] = []
 
@@ -180,46 +286,96 @@ def main() -> int:
             warnings.append(f"{iid}: 길이가 정수가 아니다 ({length!r}) — 건너뛴다")
             continue
 
+        name = norm(row[COL_NAME])
         interfaces[iid] = {
-            "name": " ".join(str(row[COL_NAME] or "").split()),
+            "name": name,
             "length": length,
-            "period": " ".join(str(row[COL_PERIOD] or "").split()),
+            "period": norm(row[COL_PERIOD]),
             "market": "/".join(str(row[COL_MARKET] or "").split()),
         }
+        name_to_id.setdefault(name, []).append(iid)
 
         for code, channel, market in parse_trcode_cell(row[COL_TRCODE] or ""):
-            if code[2:] not in groups:
-                warnings.append(f"{code}: 상품군 {code[2:]} 이 별첨에 없다")
             seen.setdefault(code, []).append(
-                {"interface": iid, "channel": channel or "", "market": market or ""}
+                {
+                    "interface": iid,
+                    "channel": channel or "",
+                    "market": market or "",
+                    "source": SPEC_VERSION,
+                }
             )
 
+    # 송신채널 v1.26 이 더 최신이다. 이름으로 이어 붙여 빠진 코드를 채운다.
+    added = 0
+    for name, codes in sorted(name_to_codes.items()):
+        ids = name_to_id.get(name)
+        if not ids:
+            continue  # 정보분배 표준서에 없는 이름 (지수·인터넷 계열). 지어내지 않는다.
+        if len(ids) > 1:
+            warnings.append(f"{name!r}: 인터페이스가 {ids} 로 갈려 v1.26 코드를 못 붙인다")
+            continue
+        iid = ids[0]
+        known = {e["interface"] for c in codes for e in seen.get(c, [])}
+        for code in sorted(codes):
+            if iid in {e["interface"] for e in seen.get(code, [])}:
+                continue
+            seen.setdefault(code, []).append(
+                {
+                    "interface": iid,
+                    "channel": "",
+                    "market": interfaces[iid]["market"].split("/")[0],
+                    "source": CHANNELS_VERSION,
+                }
+            )
+            added += 1
+        del known
+
+    for code in seen:
+        if code[2:] not in groups:
+            warnings.append(f"{code}: 상품군 {code[2:]} 이 정보구분코드에 없다")
+
     codes, by_channel = split_codes(seen, interfaces, warnings)
+    depths = derivative_depths(name_to_codes)
+    depths[10].discard("04F")  # 주식선물: 10단 등록이지만 5단만 온다
+    depths[5].add("04F")
+    if depths[10] != TEN_DEEP_EXPECTED:
+        warnings.append(
+            f"파생 호가 10단 상품군이 바뀌었다: {sorted(depths[10])} "
+            f"(기대 {sorted(TEN_DEEP_EXPECTED)}) — jeed-krx 의 depth_for() 를 고칠 것"
+        )
 
     # 데이터구분 2바이트 → 그 코드를 쓰는 인터페이스들. 표준서에 표가 없어서 역산한다.
     data_class: dict[str, list[str]] = {}
+
+    def note(code: str, iid: str) -> None:
+        bucket = data_class.setdefault(code[:2], [])
+        if iid not in bucket:
+            bucket.append(iid)
+
     for code, meta in codes.items():
         for iid in [meta["interface"], *meta["also"]]:
-            data_class.setdefault(code[:2], [])
-            if iid not in data_class[code[:2]]:
-                data_class[code[:2]].append(iid)
+            note(code, iid)
     for code, meta in by_channel.items():
         for iid in meta["by"].values():
-            data_class.setdefault(code[:2], [])
-            if iid not in data_class[code[:2]]:
-                data_class[code[:2]].append(iid)
+            note(code, iid)
 
     today = _dt.date.today().isoformat()
     lines: list[str] = [
         "# GENERATED — 손으로 고치지 않는다. tools/gen_krx_trcodes.py 를 다시 돌린다.",
         f"# 원본: {SPEC.name}",
+        f"#       {CHANNELS.name}",
         "#",
-        "# 여기에 **멀티캐스트 IP·포트는 없다.** 회선 배정이라 표준서 값이 우리 회선에",
-        "# 그대로 오지 않는다. 배포 설정(conf/krx.toml)은 사람이 적고, 기동 시 거기 적힌",
-        "# trcode 가 이 표에 있는지만 검증한다.",
+        "# 두 표준서를 합친 표다. 길이는 정보분배 인터페이스목록에서, trcode 목록은 양쪽",
+        "# 합집합에서 온다 — 새 상품은 송신채널 쪽에 먼저 뜬다 (17F 코스닥150 위클리옵션,",
+        "# 18F 개별주식 위클리옵션은 정보분배 v1.341 에 아직 없다).",
+        "#",
+        "# 여기에 **멀티캐스트 IP·포트는 없다.** 송신채널 문서에 들어 있지만 읽지 않는다:",
+        "# 회선 배정이라 표준서 값이 우리 회선에 그대로 오지 않는다. 배포 설정(conf/krx.toml)은",
+        "# 사람이 적고, 기동 시 거기 적힌 trcode 를 이 표와 대조해 경고만 낸다.",
         "",
-        f'spec_version = {toml_str(SPEC_VERSION)}',
-        f'generated = {toml_str(today)}',
+        f"spec_version = {toml_str(SPEC_VERSION)}",
+        f"channel_spec_version = {toml_str(CHANNELS_VERSION)}",
+        f"generated = {toml_str(today)}",
         f"interface_count = {len(interfaces)}",
         f"code_count = {len(codes)}",
         f"ambiguous_code_count = {len(by_channel)}",
@@ -230,6 +386,15 @@ def main() -> int:
     ]
     for code in sorted(groups):
         lines.append(f'"{code}" = {toml_str(groups[code])}')
+
+    lines += [
+        "",
+        "# 파생 호가 전문의 단수. 상품군이 정하고, 개별주식 계열만 10단이다.",
+        "# jeed-krx 의 decode::derivative::{quote,trade_quote}::depth_for() 가 이 집합이다.",
+        "[derivative_depth]",
+        "five = [" + ", ".join(f'"{g}"' for g in sorted(depths[5])) + "]",
+        "ten = [" + ", ".join(f'"{g}"' for g in sorted(depths[10])) + "]",
+    ]
 
     lines += [
         "",
@@ -260,6 +425,8 @@ def main() -> int:
         "",
         "# trcode → 인터페이스. 길이는 [interface] 에서 끌어온다 (중복 저장하지 않는다).",
         "# channel 은 표준서의 회선 그룹(증권A/파생A/…)이지 우리 회선이 아니다.",
+        "# source 는 이 코드가 어느 표준서에서 왔는지 — 1.26 만 있는 코드는 정보분배",
+        "# 표준서가 아직 못 따라온 신규 상품이다.",
         "[code]",
     ]
     for code in sorted(codes):
@@ -271,7 +438,7 @@ def main() -> int:
         lines.append(
             f'{code} = {{ interface = {toml_str(c["interface"])}, '
             f'group = "{c["group"]}", channel = {toml_str(c["channel"])}, '
-            f'market = {toml_str(c["market"])}{also} }}'
+            f'market = {toml_str(c["market"])}, source = {toml_str(c["source"])}{also} }}'
         )
 
     lines += [
@@ -291,8 +458,9 @@ def main() -> int:
 
     print(
         f"{OUT.relative_to(ROOT)}: 인터페이스 {len(interfaces)}, "
-        f"trcode {len(codes)} (+회선별 {len(by_channel)})"
+        f"trcode {len(codes)} (+회선별 {len(by_channel)}), v{CHANNELS_VERSION} 에서 {added} 개 보충"
     )
+    print(f"  파생 호가 10단 상품군: {sorted(depths[10])}")
     for w in warnings:
         print(f"  경고: {w}")
     return 0

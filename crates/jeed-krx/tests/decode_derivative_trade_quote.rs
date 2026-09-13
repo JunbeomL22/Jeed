@@ -156,7 +156,7 @@ fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
     let mut levels = kospi200_book();
     levels.extend(kospi200_book());
     let mut msg = G7::kospi200(levels);
-    msg.header.trcode = "G704F";
+    msg.header.trcode = "G705F"; // 주식옵션 — the real ten-deep case
     msg.price = "000074100";
     msg.dyn_limits = ("000074800", "000073400");
 
@@ -168,10 +168,12 @@ fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
 }
 
 #[test]
-fn the_depth_of_a_trcode_is_a_property_of_the_product_group() {
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"G701F")), Some(5));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"G704F")), Some(10));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"G705F")), Some(10));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"G729F")), Some(5));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B601F")), None, "not a G7");
+fn the_depth_rule_is_the_same_one_the_quote_decoder_uses() {
+    use jeed_krx::TrCode as T;
+    assert_eq!(depth_for(T::new(*b"G705F")), Some(10), "주식옵션");
+    assert_eq!(depth_for(T::new(*b"G718F")), Some(10), "개별주식 위클리옵션");
+    assert_eq!(depth_for(T::new(*b"G704F")), Some(5), "주식선물 — truncated to five");
+    assert_eq!(depth_for(T::new(*b"G701F")), Some(5));
+    assert_eq!(depth_for(T::new(*b"G717F")), Some(5), "코스닥150 위클리옵션");
+    assert_eq!(depth_for(T::new(*b"B601F")), None, "not a G7");
 }

@@ -66,7 +66,7 @@ fn a_single_stock_future_has_no_decimal_point_and_says_so() {
         Level::EMPTY,
     ];
     let mut msg = B6::kospi200(levels);
-    msg.header.trcode = "B604F";
+    msg.header.trcode = "B604F"; // 주식선물 — five-deep despite the ten-deep book
     let rec = decode(&msg.build());
 
     assert_eq!(rec.header.price_scale(), Ok(Scale::S0));
@@ -204,7 +204,7 @@ fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
     let mut levels = kospi200_book();
     levels.extend(kospi200_book());
     let mut msg = B6::kospi200(levels);
-    msg.header.trcode = "B604F";
+    msg.header.trcode = "B605F"; // 주식옵션 — the real ten-deep case
 
     let mut out = WireRecord::zeroed();
     TEN_DEEP.decode(&msg.build(), RECV_NS, &mut out).expect("decodes");
@@ -213,12 +213,28 @@ fn ten_deep_is_the_same_decoder_with_a_deeper_book() {
 }
 
 #[test]
-fn the_depth_of_a_trcode_is_a_property_of_the_product_group() {
-    // Single-stock futures and options are ten-deep; everything else is five.
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B601F")), Some(5));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B604F")), Some(10));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B605F")), Some(10));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B606F")), Some(5));
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B601S")), None, "not a derivative");
-    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"G701F")), None, "not a B6");
+fn only_single_stock_options_are_ten_deep() {
+    use jeed_krx::TrCode as T;
+    // Ten-deep: 주식옵션 05F, 개별주식 위클리옵션 18F.
+    assert_eq!(depth_for(T::new(*b"B605F")), Some(10));
+    assert_eq!(depth_for(T::new(*b"B618F")), Some(10));
+    // Everything else, including the new weekly index options.
+    for code in [b"B601F", b"B602F", b"B603F", b"B606F", b"B611F", b"B616F", b"B617F"] {
+        assert_eq!(depth_for(T::new(*code)), Some(5), "{}", T::new(*code));
+    }
+    assert_eq!(depth_for(T::new(*b"B601S")), None, "not a derivative");
+    assert_eq!(depth_for(T::new(*b"G701F")), None, "not a B6");
+}
+
+#[test]
+fn single_stock_futures_are_truncated_to_five_levels() {
+    // The trap. 주식선물 is a ten-deep product, but the feed sends five and
+    // nothing downstream uses more (CLAUDE.md). The distribution standard files
+    // B604F under the ten-deep interface alone and the channel standard lists
+    // it under both, so the documents cannot settle it — this does.
+    //
+    // It is also the highest-volume code on the line (26.9M in one day), so
+    // reading it ten-deep loses half the feed.
+    assert_eq!(depth_for(jeed_krx::TrCode::new(*b"B604F")), Some(5));
+    assert_eq!(FIVE_DEEP.message_len(), 324);
 }

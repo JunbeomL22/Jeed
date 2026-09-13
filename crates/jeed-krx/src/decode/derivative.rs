@@ -49,6 +49,28 @@ const LVL_BID_QTY: usize = 27;
 const LVL_ASK_COUNT: usize = 36;
 const LVL_BID_COUNT: usize = 41;
 
+/// Book depth of a derivative product group.
+///
+/// Only the single-stock **option** families are ten deep:
+///
+/// | 상품군 | | 단수 |
+/// |---|---|---|
+/// | `05F` | 주식옵션 | 10 |
+/// | `18F` | 개별주식 위클리옵션 | 10 |
+/// | 그 외 | | 5 |
+///
+/// `04F` (주식선물) is deliberately **not** in that list. The book is ten deep
+/// at the exchange but the feed truncates it to five, and nothing downstream
+/// uses more (`CLAUDE.md`). The generated table's `[derivative_depth]` section
+/// is the same statement, taken from the channel standard.
+#[inline]
+pub const fn depth_for_product_group(trcode: TrCode) -> usize {
+    match trcode.product_group() {
+        [b'0', b'5', b'F'] | [b'1', b'8', b'F'] => 10,
+        _ => 5,
+    }
+}
+
 /// The eight fields that open every derivative real-time message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {

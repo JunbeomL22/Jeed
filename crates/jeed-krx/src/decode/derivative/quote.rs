@@ -13,7 +13,9 @@
 //! [..+46:47] 0xFF
 //! ```
 
-use crate::decode::derivative::{HEADER_LEN, LEVEL_LEN, fill_book, fill_record_header, header, slice};
+use crate::decode::derivative::{
+    HEADER_LEN, LEVEL_LEN, depth_for_product_group, fill_book, fill_record_header, header, slice,
+};
 use crate::error::KrxError;
 use crate::field;
 use crate::trcode::TrCode;
@@ -31,8 +33,8 @@ const TAIL_LEN: usize = 47;
 /// currency futures.
 pub const FIVE_DEEP: DerivativeQuote = DerivativeQuote::new(5);
 
-/// `IFMSRPD0035` — ten levels per side. Single-stock futures and options
-/// (`B604F`, `B605F`).
+/// `IFMSRPD0035` — ten levels per side. Single-stock options (`B605F`,
+/// `B618F`). **Not** single-stock futures — see [`depth_for`].
 pub const TEN_DEEP: DerivativeQuote = DerivativeQuote::new(10);
 
 /// A `B6` decoder for one book depth.
@@ -108,17 +110,21 @@ impl DerivativeQuote {
 
 /// The trcodes this decoder handles, by book depth.
 ///
-/// Five-deep everywhere except single-stock futures (`04F`) and single-stock
-/// options (`05F`), which are ten-deep.
+/// Ten-deep for single-stock **options** (`05F`) and single-stock weekly
+/// options (`18F`); five-deep for everything else.
+///
+/// Single-stock **futures** (`04F`) are the trap. The product is ten deep, but
+/// the feed truncates it to five and nothing here uses more (`CLAUDE.md`), so
+/// `B604F` arrives as a 324-byte message. The two standards disagree about
+/// this — the distribution spec files `B604F` under the ten-deep interface
+/// alone, the channel spec lists it under both — and `B604F` is the
+/// highest-volume code on the line, so getting it wrong loses half the feed.
 pub const fn depth_for(trcode: TrCode) -> Option<usize> {
     if !trcode.is_derivative() {
         return None;
     }
     match trcode.data_class() {
-        [b'B', b'6'] => match trcode.product_group() {
-            [b'0', b'4', b'F'] | [b'0', b'5', b'F'] => Some(10),
-            _ => Some(5),
-        },
+        [b'B', b'6'] => Some(depth_for_product_group(trcode)),
         _ => None,
     }
 }

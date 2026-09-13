@@ -59,7 +59,8 @@ const TAIL_LEN: usize = 29;
 /// `IFMSRPD0037` — five levels per side.
 pub const FIVE_DEEP: DerivativeTradeQuote = DerivativeTradeQuote::new(5);
 
-/// `IFMSRPD0038` — ten levels per side (single-stock futures and options).
+/// `IFMSRPD0038` — ten levels per side (single-stock options `G705F` /
+/// `G718F`; **not** single-stock futures — see [`depth_for`]).
 pub const TEN_DEEP: DerivativeTradeQuote = DerivativeTradeQuote::new(10);
 
 /// A `G7` decoder for one book depth.
@@ -145,15 +146,15 @@ impl DerivativeTradeQuote {
 }
 
 /// Book depth for a `G7` trcode, or `None` if it is not one.
+///
+/// Same rule as [`quote::depth_for`](super::quote::depth_for), including the
+/// single-stock futures trap: `G704F` is five-deep (431 B), not ten.
 pub const fn depth_for(trcode: TrCode) -> Option<usize> {
     if !trcode.is_derivative() {
         return None;
     }
     match trcode.data_class() {
-        [b'G', b'7'] => match trcode.product_group() {
-            [b'0', b'4', b'F'] | [b'0', b'5', b'F'] => Some(10),
-            _ => Some(5),
-        },
+        [b'G', b'7'] => Some(super::depth_for_product_group(trcode)),
         _ => None,
     }
 }
