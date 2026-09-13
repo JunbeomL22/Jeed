@@ -176,7 +176,7 @@ fn the_depth_rule_is_the_same_one_the_quote_decoder_uses() {
     use jeed_krx::TrCode as T;
     assert_eq!(depth_for(T::new(*b"G705F")), Some(10), "주식옵션");
     assert_eq!(depth_for(T::new(*b"G718F")), Some(10), "개별주식 위클리옵션");
-    assert_eq!(depth_for(T::new(*b"G704F")), Some(5), "주식선물 — truncated to five");
+    assert_eq!(depth_for(T::new(*b"G704F")), Some(10), "주식선물 — ten deep on the wire");
     assert_eq!(depth_for(T::new(*b"G701F")), Some(5));
     assert_eq!(depth_for(T::new(*b"G717F")), Some(5), "코스닥150 위클리옵션");
     assert_eq!(depth_for(T::new(*b"B601F")), None, "not a G7");

@@ -28,6 +28,18 @@ name = "jeed-crypto"
 path = "src/bin/crypto.rs"
 doc = false
 
+# Not a feed: a capture through the same pipeline, for verifying the decoders
+# against a day of the real circuit (`documents/todo.md` §4).
+[[bin]]
+name = "jeed-pcap"
+path = "src/bin/pcap.rs"
+doc = false
+
+[[bin]]
+name = "jeed-fix"
+path = "src/bin/fix.rs"
+doc = false
+
 [dependencies]
 jeed-wire = { path = "../jeed-wire" }
 jeed-shm = { path = "../jeed-shm" }
@@ -35,6 +47,9 @@ jeed-krx = { path = "../jeed-krx" }
 # With `recv` (the default): the WebSocket loop, TLS, the venue routers and
 # the one-request HTTP client the crypto binary uses for start books.
 jeed-crypto = { path = "../jeed-crypto" }
+# The FIX 4.4 market-data protocol layer; the binary supplies the venue
+# adapter it deliberately lacks.
+jeed-fix = { path = "../jeed-fix" }
 
 # No TOML crate. `toml` brings `serde` and a dozen transitive packages for two
 # configuration files whose grammar is tables, arrays of tables, inline

@@ -85,6 +85,15 @@ impl TrCodeTable {
         self.codes.get(&code.as_u64()).map(String::as_str)
     }
 
+    /// Every code in `[code]`, in key order.
+    ///
+    /// What a replay uses as its allow-set when no narrower one is given: the
+    /// question there is not "what do we want" but "what can this build
+    /// decode of everything on the wire".
+    pub fn codes(&self) -> impl Iterator<Item = TrCode> + '_ {
+        self.codes.keys().map(|&k| TrCode::from_u64(k))
+    }
+
     /// Codes in `[code]`.
     #[inline]
     pub fn len(&self) -> usize {

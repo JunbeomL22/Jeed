@@ -65,22 +65,25 @@ const LIM_INDEX: usize = 27;
 
 /// Book depth of a derivative product group.
 ///
-/// Only the single-stock **option** families are ten deep:
+/// The single-stock families are ten deep, everything else five:
 ///
 /// | 상품군 | | 단수 |
 /// |---|---|---|
+/// | `04F` | 주식선물 | 10 |
 /// | `05F` | 주식옵션 | 10 |
 /// | `18F` | 개별주식 위클리옵션 | 10 |
 /// | 그 외 | | 5 |
 ///
-/// `04F` (주식선물) is deliberately **not** in that list. The book is ten deep
-/// at the exchange but the feed truncates it to five, and nothing downstream
-/// uses more (`CLAUDE.md`). The generated table's `[derivative_depth]` section
-/// is the same statement, taken from the channel standard.
+/// `04F` was once left out of that list on a reading of the channel standard
+/// — "the book is ten deep at the exchange but the feed truncates it to
+/// five". A day of the circuit says otherwise: every `B604F` is 554 bytes and
+/// every `G704F` 661, the ten-deep interfaces (`documents/todo.md` §16). The
+/// distribution standard, which files `B604F` under `IFMSRPD0035` alone, was
+/// right. The generated table's `[derivative_depth]` section says the same.
 #[inline]
 pub const fn depth_for_product_group(trcode: TrCode) -> usize {
     match trcode.product_group() {
-        [b'0', b'5', b'F'] | [b'1', b'8', b'F'] => 10,
+        [b'0', b'4', b'F'] | [b'0', b'5', b'F'] | [b'1', b'8', b'F'] => 10,
         _ => 5,
     }
 }

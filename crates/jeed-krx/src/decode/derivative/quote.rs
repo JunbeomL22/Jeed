@@ -116,15 +116,14 @@ impl DerivativeQuote {
 
 /// The trcodes this decoder handles, by book depth.
 ///
-/// Ten-deep for single-stock **options** (`05F`) and single-stock weekly
-/// options (`18F`); five-deep for everything else.
+/// Ten-deep for the single-stock families — futures (`04F`), options (`05F`)
+/// and weekly options (`18F`); five-deep for everything else.
 ///
-/// Single-stock **futures** (`04F`) are the trap. The product is ten deep, but
-/// the feed truncates it to five and nothing here uses more (`CLAUDE.md`), so
-/// `B604F` arrives as a 324-byte message. The two standards disagree about
-/// this — the distribution spec files `B604F` under the ten-deep interface
-/// alone, the channel spec lists it under both — and `B604F` is the
-/// highest-volume code on the line, so getting it wrong loses half the feed.
+/// `04F` is the one to get right: `B604F` is the highest-volume code on the
+/// line (40% of a day), and it once sat on the five-deep side because the
+/// channel standard lists it under both interfaces. The capture settled it —
+/// 554 bytes, every one (`documents/todo.md` §16). Reading it five-deep would
+/// fail the frame check on all of them, which is loud, and lose half the feed.
 pub const fn depth_for(trcode: TrCode) -> Option<usize> {
     if !trcode.is_derivative() {
         return None;

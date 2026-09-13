@@ -84,6 +84,14 @@ impl TrCode {
             | (self.0[4] as u64) << 32
     }
 
+    /// The inverse of [`as_u64`](Self::as_u64). Bytes above the fifth are
+    /// ignored.
+    #[inline]
+    pub const fn from_u64(key: u64) -> Self {
+        let b = key.to_le_bytes();
+        Self([b[0], b[1], b[2], b[3], b[4]])
+    }
+
     /// The code as text, when every byte is printable ASCII.
     #[inline]
     pub const fn as_str(&self) -> Option<&str> {

@@ -47,9 +47,9 @@ fn one_data_class_reaches_three_markets_and_not_one_byte_of_shared_layout() {
 fn the_derivative_depth_is_taken_from_the_product_group() {
     assert_eq!(message_len(T::new(*b"B605F")), Some(554), "주식옵션 ten-deep");
     assert_eq!(message_len(T::new(*b"B618F")), Some(554), "개별주식 위클리옵션");
-    assert_eq!(message_len(T::new(*b"B604F")), Some(324), "주식선물 truncated to five");
+    assert_eq!(message_len(T::new(*b"B604F")), Some(554), "주식선물 — ten deep on the wire");
     assert_eq!(message_len(T::new(*b"G705F")), Some(661));
-    assert_eq!(message_len(T::new(*b"G704F")), Some(431));
+    assert_eq!(message_len(T::new(*b"G704F")), Some(661));
 }
 
 #[test]

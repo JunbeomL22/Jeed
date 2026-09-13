@@ -60,13 +60,13 @@ LINE_RE = re.compile(r"^(?:\((?P<grp>[^)]+)\)\s*)?(?:(?P<mkt>[A-Z]{2,8})\s*:)?\s
 # 파생 호가 전문의 단수는 상품군이 정한다. 근거는 송신채널 v1.26 전용선 시트가
 # "파생 우선호가 (우선호가 10단계)" 에 붙여 놓은 코드 목록이고, 이 스크립트가
 # 아래 기대값과 대조해서 달라지면 경고한다 — 디코더의 `depth_for()` 가 이 집합이다.
-# `04F`(주식선물)는 빠져 있다 — 상품은 10단이지만 시세는 5단으로 잘라 보낸다(CLAUDE.md).
-# 송신채널 v1.26 은 `B604F` 를 5단·10단 목록에 **둘 다** 올려 두므로 여기서 빼 준다.
-TEN_DEEP_EXPECTED = {"05F", "18F"}
+# `04F`(주식선물)는 송신채널 v1.26 이 5단·10단 목록에 **둘 다** 올려 두는데, 회선은 10단
+# (554B/661B)으로 보낸다 — 2026-08-07 캡처 전수 확인(todo.md §16). 10단 쪽에 둔다.
+TEN_DEEP_EXPECTED = {"04F", "05F", "18F"}
 
-# 원장은 10단이지만 **시세는 5단으로 잘라서** 오는 상품군. 송신채널 v1.26 이 `B604F` 를
-# 5단·10단 목록에 둘 다 올려 두는 탓에 표만 보면 못 가른다 (CLAUDE.md).
-TRUNCATED_TO_FIVE = {"04F"}
+# 송신채널이 5단·10단 목록에 **둘 다** 올려 둔 상품군과, 회선이 실제로 보내는 단수.
+# 표만 보면 못 가르고 캡처가 갈랐다 (todo.md §16).
+DOUBLE_LISTED = {"04F": 10}
 
 # jeed-krx 가 디코드하는 두 계열. `[derivative_depth]` 는 이것만 보고 만든다 —
 # 디코더의 `depth_for()` 가 덮는 범위와 같아야 하기 때문이다.
@@ -185,10 +185,10 @@ def split_codes(
     by_channel: dict[str, dict] = {}
 
     for code, entries in seen.items():
-        # 주식선물 계열은 5단·10단 양쪽에 등록돼 있지만 실제로는 5단만 온다.
+        # 주식선물 계열은 5단·10단 양쪽에 등록돼 있지만 회선은 한쪽(10단)으로만 보낸다.
         # 길이가 갈리는 것으로 두면 아래에서 회선별 테이블로 떨어지는데, 회선이
-        # 판별자가 아니므로 여기서 먼저 5단으로 확정한다.
-        if code[2:] in TRUNCATED_TO_FIVE:
+        # 판별자가 아니므로 여기서 먼저 캡처가 확인한 단수로 확정한다.
+        if code[2:] in DOUBLE_LISTED:
             depthful = [
                 e for e in entries
                 if ALL_DEPTH_INTERFACE_NAMES.get(interfaces[e["interface"]]["name"]) is not None
@@ -196,7 +196,7 @@ def split_codes(
             if len(depthful) == len(entries) and depthful:
                 entries = [
                     e for e in entries
-                    if ALL_DEPTH_INTERFACE_NAMES[interfaces[e["interface"]]["name"]] == 5
+                    if ALL_DEPTH_INTERFACE_NAMES[interfaces[e["interface"]]["name"]] == DOUBLE_LISTED[code[2:]]
                 ]
 
         uniq: list[dict] = []
@@ -336,8 +336,9 @@ def main() -> int:
 
     codes, by_channel = split_codes(seen, interfaces, warnings)
     depths = derivative_depths(name_to_codes)
-    depths[10].discard("04F")  # 주식선물: 10단 등록이지만 5단만 온다
-    depths[5].add("04F")
+    for group, depth in DOUBLE_LISTED.items():  # 양쪽에 올린 상품군은 캡처가 확인한 쪽으로
+        depths[depth].add(group)
+        depths[15 - depth].discard(group)
     if depths[10] != TEN_DEEP_EXPECTED:
         warnings.append(
             f"파생 호가 10단 상품군이 바뀌었다: {sorted(depths[10])} "

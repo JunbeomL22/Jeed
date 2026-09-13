@@ -75,8 +75,8 @@ ambiguous_code_count = 5
 # 파생 호가 전문의 단수. 상품군이 정하고, 개별주식 계열만 10단이다.
 # jeed-krx 의 decode::derivative::{quote,trade_quote}::depth_for() 가 이 집합이다.
 [derivative_depth]
-five = ["01F", "02F", "03F", "04F", "06F", "07F", "08F", "09F", "10F", "11F", "12F", "13F", "15F", "16F", "17F"]
-ten = ["05F", "18F"]
+five = ["01F", "02F", "03F", "06F", "07F", "08F", "09F", "10F", "11F", "12F", "13F", "15F", "16F", "17F"]
+ten = ["04F", "05F", "18F"]
 
 # 데이터구분 2바이트 (trcode 의 앞 2자리) → 이 구분을 쓰는 인터페이스.
 # 표준서에 표가 없어서 코드에서 역산했다.
@@ -529,7 +529,7 @@ B201X = { interface = "IFMSRPD0021", group = "01X", channel = "증권B", market 
 B202F = { interface = "IFMSRPD0044", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
 B202S = { interface = "IFMSRPD0022", group = "02S", channel = "증권C", market = "STK", source = "1.341" }
 B203F = { interface = "IFMSRPD0044", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
-B204F = { interface = "IFMSRPD0044", group = "04F", channel = "", market = "DRV", source = "1.26" }
+B204F = { interface = "IFMSRPD0045", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
 B204S = { interface = "IFMSRPD0022", group = "04S", channel = "증권C", market = "STK", source = "1.341" }
 B205F = { interface = "IFMSRPD0045", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
 B205S = { interface = "IFMSRPD0022", group = "05S", channel = "", market = "STK", source = "1.26" }
@@ -561,7 +561,7 @@ B601S = { interface = "IFMSRPD0002", group = "01S", channel = "증권A", market 
 B601X = { interface = "IFMSRPD0002", group = "01X", channel = "증권B", market = "KNX", source = "1.341" }
 B602F = { interface = "IFMSRPD0034", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
 B603F = { interface = "IFMSRPD0034", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
-B604F = { interface = "IFMSRPD0034", group = "04F", channel = "", market = "DRV", source = "1.26" }
+B604F = { interface = "IFMSRPD0035", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
 B605F = { interface = "IFMSRPD0035", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
 B606F = { interface = "IFMSRPD0034", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
 B607F = { interface = "IFMSRPD0034", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
@@ -660,7 +660,7 @@ G701M = { interface = "IFMSRPD0030", group = "01M", channel = "채권A", market 
 G701R = { interface = "IFMSRPD0031", group = "01R", channel = "채권A", market = "RPO", source = "1.341" }
 G702F = { interface = "IFMSRPD0037", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
 G703F = { interface = "IFMSRPD0037", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
-G704F = { interface = "IFMSRPD0037", group = "04F", channel = "", market = "DRV", source = "1.26" }
+G704F = { interface = "IFMSRPD0038", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
 G705F = { interface = "IFMSRPD0038", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
 G706F = { interface = "IFMSRPD0037", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
 G707F = { interface = "IFMSRPD0037", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }
@@ -918,7 +918,7 @@ R101F = { interface = "IFMSRPD0039", group = "01F", channel = "파생A", market 
 R101G = { interface = "IFMSRPD0049", group = "01G", channel = "일반A", market = "CMD", source = "1.341" }
 R102F = { interface = "IFMSRPD0039", group = "02F", channel = "파생A", market = "DRV", source = "1.341" }
 R103F = { interface = "IFMSRPD0039", group = "03F", channel = "파생A", market = "DRV", source = "1.341" }
-R104F = { interface = "IFMSRPD0039", group = "04F", channel = "", market = "DRV", source = "1.26" }
+R104F = { interface = "IFMSRPD0040", group = "04F", channel = "파생A", market = "DRV", source = "1.341" }
 R105F = { interface = "IFMSRPD0040", group = "05F", channel = "파생A", market = "DRV", source = "1.341" }
 R106F = { interface = "IFMSRPD0039", group = "06F", channel = "파생A", market = "DRV", source = "1.341" }
 R107F = { interface = "IFMSRPD0039", group = "07F", channel = "파생A", market = "DRV", source = "1.341" }

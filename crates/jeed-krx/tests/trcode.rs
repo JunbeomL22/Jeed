@@ -62,3 +62,13 @@ fn a_non_printable_code_still_renders() {
     assert_eq!(c.as_str(), None);
     assert!(c.to_string().contains("00"));
 }
+
+#[test]
+fn from_u64_is_the_inverse_of_as_u64() {
+    for code in [b"B601F", b"G704F", b"V103F", b"Q216F", b"A301F", b"B703S", b"\x00\x01\x02\x03\x04"] {
+        let c = TrCode::new(*code);
+        assert_eq!(TrCode::from_u64(c.as_u64()), c);
+    }
+    // Bytes above the fifth do not belong to a code and are ignored.
+    assert_eq!(TrCode::from_u64(TrCode::new(*b"B601F").as_u64() | 0xff << 40), TrCode::new(*b"B601F"));
+}

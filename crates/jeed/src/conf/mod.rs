@@ -26,6 +26,7 @@
 //! the conf.
 
 pub mod crypto;
+pub mod fix;
 pub mod krx;
 pub mod rules;
 pub mod trcodes;
@@ -35,6 +36,7 @@ use core::fmt;
 use std::path::{Path, PathBuf};
 
 pub use crypto::{CryptoConf, CryptoFeedConf, InstrumentConf};
+pub use fix::{FixConf, FixFeedConf};
 pub use krx::{FeedConf, KrxConf, Warning};
 pub use rules::RuleError;
 pub use trcodes::TrCodeTable;

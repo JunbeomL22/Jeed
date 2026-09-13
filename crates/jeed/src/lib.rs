@@ -16,7 +16,9 @@
 //! (`documents/todo.md` §2) — and that is what lives here. `src/bin/krx.rs`
 //! and `src/bin/crypto.rs` are the few dozen lines that are each handler's
 //! alone; [`krx`] and [`crypto`] are their wiring, [`feed`] what the two
-//! wirings share.
+//! wirings share. `src/bin/pcap.rs` is not a feed: it puts a capture through
+//! the KRX pipeline ([`pcap`]) so the decoders can be checked against a day
+//! of the real circuit.
 //!
 //! ## What is deliberately not here
 //!
@@ -35,12 +37,14 @@ pub mod conf;
 pub mod cpu;
 pub mod crypto;
 pub mod feed;
+pub mod fix;
 pub mod krx;
 pub mod log;
+pub mod pcap;
 pub mod signal;
 pub mod toml;
 
 pub use boot::boot_id;
-pub use conf::{ConfError, CryptoConf, KrxConf, TrCodeTable};
+pub use conf::{ConfError, CryptoConf, FixConf, KrxConf, TrCodeTable};
 pub use cpu::{CpuError, Topology};
 pub use feed::Options;

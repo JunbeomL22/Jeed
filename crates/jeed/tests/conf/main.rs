@@ -4,6 +4,7 @@ use jeed::conf::{ConfError, Health, Section};
 use jeed::toml::parse;
 
 mod crypto;
+mod fix;
 mod krx;
 mod rules;
 mod trcodes;

@@ -62,3 +62,17 @@ fn a_key_that_is_not_five_bytes_is_refused() {
     let e = TrCodeTable::from_table(&parse("[code]\nB601 = { interface = \"X\" }").unwrap()).unwrap_err();
     assert_eq!(e.to_string(), "code: `B601` is not a five-byte trcode");
 }
+
+#[test]
+fn codes_enumerates_the_code_section_only() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conf/krx_trcodes.toml");
+    let t = TrCodeTable::load(&path).unwrap();
+    let codes: Vec<TrCode> = t.codes().collect();
+    assert_eq!(codes.len(), t.len());
+    assert!(codes.contains(&code("B601F")));
+    assert!(codes.contains(&code("G717F")), "the channel standard's additions are in [code]");
+    // Known only by channel: not a fixed interface, so not enumerated.
+    assert!(!codes.contains(&code("B201S")));
+    // Every enumerated code is one the table knows, round-tripped through u64.
+    assert!(codes.iter().all(|&c| t.knows(c)));
+}

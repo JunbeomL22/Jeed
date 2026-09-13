@@ -1,42 +1,46 @@
 # Jeed
 
-**J**unbeom f**eed** handler — KRX UDP 멀티캐스트 · FIX 4.4 · 크립토 거래소 WebSocket 을
-받아 **고정 레이아웃 640 바이트 와이어 레코드**로 만들어 공유 메모리 링으로 넘기는 피드
-핸들러. 소비자(OMS)와 **별도 프로세스**로 돈다. 순수 Rust, 외부 의존은 `rustls` 하나.
+**J**unbeom f**eed** handler. Receives KRX UDP multicast, crypto-exchange WebSocket
+streams and FIX 4.4 market data, decodes each into a **fixed-layout 640-byte wire
+record**, and publishes it to a shared-memory ring. The consumer (an OMS) runs as a
+**separate process** and depends on nothing but the wire format and the ring. Pure
+Rust; the only external dependency is `rustls`.
 
 ```text
- KRX 회선 ──UDP──▶ jeed-krx    ─┐
- 크립토 거래소 ──WSS──▶ jeed-crypto ─┼─▶ 디코드 · 필터 · 정규화 ─▶ WireRecord ─▶ shm SPSC 링 ─▶ 소비자
- FIX 베뉴 ──TCP──▶ (jeed-fix)  ─┘        무상태 · 북 없음                      프로세스 경계
+ KRX circuit ──UDP──▶ jeed-krx    ─┐
+ crypto venues ──WSS──▶ jeed-crypto ─┼─▶ decode · filter · normalise ─▶ WireRecord ─▶ shm SPSC ring ─▶ consumer
+ FIX venue ──TCP──▶ jeed-fix     ─┘        stateless · no book kept                     process boundary
 ```
 
-## 왜 프로세스를 나누나
+## Why a separate process
 
-- **파싱 버그 하나에 OMS 를 재배포하지 않는다.** 소비자는 `jeed-wire` + `jeed-shm` 만 의존한다.
-  KRX 전문 레이아웃, 거래소 JSON 방언, TLS — 전부 링 이쪽에 갇힌다.
-- **핫 패스가 한 코어에 핀된 busy-spin 하나다.** 링 생산자는 막히지 않고, 소비자는
-  `producer_seq` 로 자기 유실을 안다.
-- **와이어 포맷이 락인이지 링이 락인이 아니다.** `WIRE_FORMAT_VERSION` 을 올리는 건 양쪽
-  바이너리 동시 배포 이벤트라서 가볍게 올리지 않는다.
+- **A parsing bug does not redeploy the OMS.** The consumer depends on `jeed-wire` and
+  `jeed-shm` only. KRX message layouts, exchange JSON dialects, TLS — all of it stays
+  on this side of the ring.
+- **The hot path is one busy-spin loop pinned to one core.** The ring producer never
+  blocks; the consumer learns about its own losses from `producer_seq`.
+- **The wire format is the lock-in, not the ring.** Bumping `WIRE_FORMAT_VERSION` is a
+  deploy-both-binaries event and is not done lightly.
 
-설계 근거 전체는 [`documents/feed_handler.md`](documents/feed_handler.md), 작업 이력과
-측정은 [`documents/todo.md`](documents/todo.md), 코드를 만질 때 알아야 하는 함정은
-[`CLAUDE.md`](CLAUDE.md) 에 있다.
+Design rationale: [`documents/feed_handler.md`](documents/feed_handler.md). Work log,
+decisions and measurements: [`documents/todo.md`](documents/todo.md). The traps you must
+know before touching the code: [`CLAUDE.md`](CLAUDE.md) (Korean).
 
-## 크레이트
+## Crates
 
 ```text
 crates/
-  jeed-wire/     와이어 레코드 ABI. 의존성 0. 소비자가 의존하는 유일한 것
-  jeed-convert/  고정폭 ASCII 수치 파서 (SWAR)
-  jeed-shm/      named mapping(Win32) / shm_open(POSIX) + SPSC 링 (producer / consumer)
-  jeed-krx/      KRX UDP 수신 + 전문 디코더 → WireRecord
-  jeed-fix/      FIX 4.4 프로토콜 → MdMessage (베뉴 어댑터 자리는 있고 입주자가 없다)
-  jeed-crypto/   크립토 WebSocket JSON → WireRecord
+  jeed-wire/     Wire record ABI. Zero dependencies. The only thing a consumer depends on
+  jeed-convert/  Fixed-width ASCII numeric parsing (SWAR)
+  jeed-shm/      Named mapping (Win32) / shm_open (POSIX) + SPSC ring (producer / consumer)
+  jeed-krx/      KRX UDP reception + message decoders → WireRecord
+  jeed-fix/      FIX 4.4 protocol → MdMessage. Knows no venue; the adapter is a trait
+  jeed-crypto/   Crypto WebSocket JSON → WireRecord
                  binance · upbit · bithumb · okx · bybit · bitget · gate · kucoin
-                 + recv/ WS·TLS 수신부, 거래소별 Router, 한 번 쓰는 HTTP 클라이언트
-  jeed/          바이너리. conf(TOML 리더 직접 씀) · 코어 핀 · 세그먼트 · 시그널 · 리포트 배선
-                 src/bin/krx.rs → jeed-krx,  src/bin/crypto.rs → jeed-crypto
+                 + recv/: WS·TLS receive loop, per-venue Router, one-shot HTTP client
+  jeed/          The binaries: conf (own TOML reader) · core pinning · segments · signals · report
+                 src/bin/krx.rs → jeed-krx   src/bin/crypto.rs → jeed-crypto
+                 src/bin/fix.rs → jeed-fix   src/bin/pcap.rs   → jeed-pcap (capture replay)
 ```
 
 ```text
@@ -46,37 +50,46 @@ jeed-wire ←── jeed-shm ←──┬── jeed (bin)
     ├── jeed-fix ─────────┤
     └── jeed-crypto ──────┘
     ↑
-    └──────────────────── 소비자는 jeed-wire + jeed-shm 만
+    └──────────────────── a consumer needs jeed-wire + jeed-shm, nothing else
 ```
 
-핸들러 크레이트(`jeed-krx` `jeed-fix` `jeed-crypto`)는 **`jeed-shm` 에 의존하지 않는다.**
-`jeed_wire::RecordSink` 에 쓰고, 바이너리가 그 싱크를 링에 연결한다. 그래서 디코더는 전부
-캡처된 바이트 위에서 소켓 없이 테스트된다.
+The handler crates (`jeed-krx`, `jeed-fix`, `jeed-crypto`) **do not depend on `jeed-shm`**.
+They write into a `jeed_wire::RecordSink` and the binary connects that sink to a ring, so
+every decoder is tested on captured bytes with no socket and no shared memory in sight.
 
-## 와이어 레코드
+## The wire record
 
-`WireRecord` 는 640 바이트, `#[repr(C)]`, 캐시라인 정렬, 암묵 패딩 0 (컴파일 타임 단언).
+`WireRecord` is 640 bytes, `#[repr(C)]`, cache-line aligned, with no implicit padding
+(asserted at compile time).
 
 ```text
-RecordHeader 64B   kind · venue · symbol[24] · recv_ns · venue_ns · producer_seq · price/qty scale · depth · flags
-payload     544B   Quote(10단 양쪽) · Trade · TradeQuote(체결+북 원자) · SnapshotDelta(32단 디프) · Heartbeat · …
-tail         32B   명시 패딩
+RecordHeader 64 B   kind · venue · symbol[24] · recv_ns · venue_ns · producer_seq · price/qty scale · depth · flags
+payload     544 B   Quote (10 levels a side) · Trade · TradeQuote (print + book, atomic) · SnapshotDelta (32 changed levels)
+                    PriceLimit · DynamicPriceLimit · MarketSchedule · Heartbeat · …
+tail         32 B   explicit padding
 ```
 
-- **결론만 싣고 근거는 안 싣는다.** `STALE` 플래그는 싣고, 거래소별 시퀀스 갭 판정은 안
-  싣는다 — 소비자가 `venue` 로 분기해야 읽히는 비트는 공통 필드가 아니다.
-- **식별자는 `(venue, symbol)` 원본.** 프로세스 로컬 인터닝 id 는 경계를 못 넘는다.
-  바이낸스 현물과 USD-M 은 `BTCUSDT` 가 겹치므로 베뉴 바이트가 다르다.
-- **스케일은 값이 아니라 헤더의 속성.** 가격은 정수로 가고, 자릿수는 헤더에 한 번 찍힌다.
-- **델타는 자르지 않고 버린다.** 스냅샷은 얕아져도 북이지만, 잘린 델타는 영영 틀린 북이다.
+- **Conclusions travel, evidence does not.** The `STALE` flag is on the wire; a venue-specific
+  sequence-gap verdict is not — a bit the consumer must branch on `venue` to read is not a
+  common field.
+- **The identifier is the venue's own `(venue, symbol)`.** Process-local interned ids do not
+  cross the boundary. Binance spot and USD-M both list `BTCUSDT`, so they are different venue
+  bytes.
+- **Scale is a property of the header, not of a value.** Prices are integers; the number of
+  decimals is stamped once in the header.
+- **Deltas are dropped, never truncated.** A snapshot cut to ten levels is a shallow book;
+  a delta cut to thirty-two is a wrong book forever.
 
-## shm 링
+## The shm ring
 
-- **백프레셔가 아니라 덮어쓰기.** 꽉 차면 가장 오래된 걸 덮는다. 생산자는 절대 막히지 않는다.
-- **레코드의 `producer_seq` 가 슬롯 seqlock.** 쓰는 동안 `u64::MAX` 센티널, 본문, Release,
-  진짜 seq. 소비자는 앞뒤로 두 번 읽어 찢긴 읽기를 걸러낸다.
-- **소비자는 링의 끝(live edge)에서 붙는다.** 낡은 한 바퀴를 재생하지 않는다.
-- **`boot_id`** 로 생산자 재기동을 안다. 하트비트 레코드로 "조용한 시장" 과 "죽은 생산자" 를 가른다.
+- **Overwrite, not back-pressure.** When full, the oldest slot is overwritten. The producer
+  never blocks.
+- **`producer_seq` in the record is the slot's seqlock.** `u64::MAX` while a slot is being
+  written, then the body, a release fence, then the real sequence. A consumer reads the
+  sequence before and after to reject a torn read.
+- **A consumer attaches at the live edge.** It never replays a stale lap.
+- **`boot_id`** identifies a producer restart; heartbeat records separate "quiet market" from
+  "dead producer".
 
 ```rust
 use jeed_shm::{Recv, RingConsumer, SegmentName};
@@ -88,102 +101,277 @@ let mut rec = WireRecord::zeroed();
 loop {
     match rx.try_recv(&mut rec) {
         Recv::Record => { /* rec.kind(), rec.header.venue(), rec.quote() … */ }
-        Recv::Lagged(n) => { /* n 개를 놓쳤다 — 델타 사슬이면 리싱크 */ }
-        Recv::Restarted { .. } => { /* 생산자가 재기동했다 */ }
-        Recv::Empty => { /* spin 또는 yield */ }
+        Recv::Lagged(n) => { /* n records were overwritten — resync if you follow a delta chain */ }
+        Recv::Restarted { .. } => { /* the producer rebooted */ }
+        Recv::Empty => { /* spin or yield */ }
     }
 }
 ```
 
-## 바이너리
-
-| 바이너리 | conf | 수신 | 한 피드 = |
-|---|---|---|---|
-| `jeed-krx` | [`conf/krx.example.toml`](conf/krx.example.toml) | UDP 멀티캐스트 가입, 런타임 trcode 디스패치 | 소켓 묶음 하나 · 스레드 하나 · 링 하나 |
-| `jeed-crypto` | [`conf/crypto.example.toml`](conf/crypto.example.toml) | WebSocket 하나, 거래소별 `Router` | 연결 하나 · 스레드 하나 · 링 하나 |
+## Building and running
 
 ```bash
 cargo build --release
-./target/release/jeed-krx    conf/krx.toml    --check    # 검증만, 아무것도 안 만든다
-./target/release/jeed-crypto conf/crypto.toml --no-pin   # 코어 핀 없이 (개발 기계)
+./target/release/jeed-krx    conf/krx.toml    --check    # validate only, create nothing
+./target/release/jeed-crypto conf/crypto.toml --no-pin   # run without core pinning (a dev box)
+./target/release/jeed-fix    conf/fix.toml
 ```
 
-종료 코드: `0` 요청으로 정지 · `1` 사용법/conf · `2` 기동 실패 · `3` 피드 사망.
-피드 하나가 죽으면 전부 멈춘다 — 소비자가 반쪽 시장을 보게 두지 않는다.
+Every binary takes `<conf.toml> [--check] [--no-pin]`. Paths in a conf are relative to the
+working directory, so start from the repository root. Exit codes: `0` stopped on request
+(Ctrl-C / SIGTERM) · `1` usage or conf error · `2` could not start · `3` a feed died. **If one
+feed dies, all feeds stop** — the consumer is never left looking at half a market.
 
-**conf 규칙은 둘 다 같다.** 모르는 키는 기동 실패(`ring_slot` 이 기본값 옆에서 조용히
-무시되면 안 된다), 없는 `[health]` 가드는 **켜진** 값(100 ms 하트비트 / 500 ms stale),
-끄려면 `0` 을 적는다. 코어 중복, spin 피드에 코어 여럿, spin 코어의 SMT 형제 점유, 2의
-거듭제곱이 아닌 링은 `--check` 가 거부한다.
+The conf rules are the same for all three:
 
-**할 수 있는 건 전부 스레드 전에 실패한다.** 링 생성·소켓 가입·라우터 구성은 메인
-스레드에서 conf 순서대로 한다. 두 번째 피드가 틀리면 아무것도 도는 것 없이 종료한다.
+- **An unknown key is a start-up failure.** `ring_slot = 65536` next to a default `ring_slots`
+  must not run silently with the wrong size.
+- **An absent guard is an enabled guard.** No `[health]` section means a 100 ms heartbeat
+  record and a 500 ms stale threshold. To turn one off, write `0`.
+- **Placement is checked before anything is created**: duplicate cores, a spinning feed on
+  more than one core, a spinning core's SMT sibling in use by another feed, a ring size that
+  is not a power of two, duplicate ring names. `--check` runs exactly these checks and exits.
+- **Everything that can fail, fails before a thread starts.** Rings are created, sockets
+  joined and routers built on the main thread in conf order. A mistake in the second feed
+  ends the process with nothing running.
 
-### `jeed-krx`
+Every feed thread writes one report line per `report_secs` (default 10) with its counters.
+Refused messages are logged with their cause and the first bytes — the first five in full,
+then one in a thousand — which is how most of the venue surprises below were found.
 
-한 포트에 데이터구분이 전부 섞여 오므로 `sockets`(가입할 곳)와 `trcodes`(건질 것)가
-따로다. 소켓 ↔ trcode 대응은 회선 배정이라 검증할 수 없고, 리포트 줄이 "어느 소켓에서도
-한 번도 안 본 trcode" 를 찍어 오배선을 드러낸다. `mode = "spin"` 은 코어 100% 의 busy-spin,
-`"block"` 은 `WSAPoll`/`poll`.
+### `jeed-krx` — KRX UDP multicast
 
-### `jeed-crypto`
+One `[[feed]]` is a set of multicast sockets, one receive thread, one ring. A single port
+carries **every data class of a product group** (`B6` book, `G7` print+book, `A3` print,
+`V1`/`Q2` price limits, and a dozen others), so `sockets` (what to join) and `trcodes` (what
+to keep) are separate lists. The five-byte trcode (`B604F` = data class `B6`, product group
+`04F`) is the dispatch key; anything not in `trcodes` is dropped before a ring slot is claimed.
 
-conf 는 네 단어의 채널 어휘로 말하고 라우터가 거래소 방언으로 옮긴다:
+```toml
+trcode_table = "conf/krx_trcodes.toml"   # generated from the KRX standards (tools/)
 
-| venue | `trade` | `bbo` | `book` | `delta` |
-|---|---|---|---|---|
-| binance-spot / -futures | `@trade` / `@aggTrade` | `@bookTicker` | `@depth{N}@100ms` | `@depth@100ms` |
-| upbit / bithumb | `trade` | – | `orderbook` | – |
-| okx | `trades` | – | `books5` | `books` |
-| bybit-spot / -linear | `publicTrade` | – | `orderbook.{N}` | – |
-| bitget-spot / -linear | `trade` | – | `books` / `books{N}` | – |
-| gate-spot | `spot.trades` | – | – (REST) | `spot.order_book_update` |
-| kucoin-spot / -futures | `/market/match` · `/contractMarket/execution` | – | – (REST) | `/market/level2` · `/contractMarket/level2` |
+[[feed]]
+name  = "hot"
+mode  = "spin"            # busy-spin, 100 % of one core
+cores = [2]               # exactly one core for a spinning feed; leave its SMT sibling empty
+ring  = "jeed.krx.hot"
+ring_slots = 65536        # × 640 B ≈ 40 MB; must be a power of two
+sockets = ["233.38.231.92:10302", "233.38.231.92:10304"]     # from your circuit assignment
+trcodes = ["B601F", "G701F", "B604F", "G704F", "V101F", "Q201F"]
 
-거래소가 그 스트림을 안 주면 `--check` 에서 거부된다. `delta` 는 디프만 오는 채널이라
-시작 북이 따로 필요한데, 게이트·쿠코인은 연결될 때마다 REST 로 한 번 받아 같은 링에
-`Quote` 로 싣는다. 쿠코인은 소켓 주소 자체를 REST 티켓(`bullet-public`)으로 받는다.
-구독 메시지·방언 ping(`ping`, `{"op":"ping"}`, `spot.ping`, `{"type":"ping"}`)·REST 요청은
-전부 라우터가 *무엇을* 보낼지 말하고 바이너리가 라운드 사이에 보낸다 — 수신 루프 안에
-블로킹 호출이 없다.
+[[feed]]
+name  = "cold"
+mode  = "block"           # poll/WSAPoll, ~0 % CPU
+cores = [4, 5, 6, 7]
+ring  = "jeed.krx.cold"
+ring_slots = 4096
+sockets = ["233.38.231.93:10315"]
+trcodes = ["M401F", "M403F"]
 
-## 빌드 · 테스트
+# isin_list = "conf/isins.txt"   # optional per-instrument allow-list (one 종목코드 per line)
+[health]
+heartbeat_ms = 100
+stale_ms = 500
+```
+
+What the decoders cover today: derivatives books (`B6`, 5- and 10-deep), prints (`A3`),
+print+book (`G7`), price-limit expansion (`V1`), dynamic price bands (`Q2`), stocks (`B6`
+590 B, `A3`), ETF/ETN/ELW LP books (`B7` 830 B), market schedules (`M4`). Bonds have decoders
+but the live circuit's bond layout does not match them yet (see `documents/todo.md` §16).
+
+The socket ↔ trcode mapping is a circuit fact the conf cannot verify. Two things help: the
+report line warns about any configured trcode that has **never arrived on any socket**, and
+`jeed-pcap` (below) prints, per multicast port, exactly which trcodes a capture carried.
+
+### `jeed-pcap` — replay a capture through the KRX pipeline
 
 ```bash
-cargo build
-cargo test --workspace          # 1,200+ 건. 소켓 테스트는 루프백, 멀티캐스트는 239.255/16
-cargo clippy --workspace --all-targets
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+./target/release/jeed-pcap E:/Data/krx_pcap/20260807.pcap --report report.txt
+./target/release/jeed-pcap capture.pcap --trcodes B604F,G704F --isin KR4A50680003 --dump records.tsv
 ```
 
-Windows 와 리눅스(WSL)에서 같은 결과여야 한다. OS API 는 `jeed-shm/src/mapping/`,
-`jeed-krx/src/recv/socket/`, `jeed/src/{cpu,signal}/` 의 `windows.rs` / `posix.rs` 에만 있고
-그 위층에 `#[cfg]` 이 없다. 실제 거래소에 붙는 테스트는 `#[ignore]`
-(`cargo test -p jeed-crypto --test recv live -- --ignored`).
+Reads a libpcap file (Ethernet · IPv4 · UDP, VLAN tags tolerated), feeds every datagram
+through the **same `Pipeline::ingest` the receive loop uses**, and reports per trcode: count,
+length distribution, end-keyword check, what happened (published · filtered · unknown ·
+wrong-length · refused), the first refused messages with their cause and head, and per port
+which codes arrived. `--dump` writes every published record as one TSV line for comparing
+against a reference decoder. No `pcap` crate; a day of 92 GB takes about eight minutes.
 
-`tests/` 는 `src/` 구조를 그대로 따른다. 전문 빌더와 캡처 프레임은 `tests/<venue>/common/`
-에 한 벌 두고 다른 테스트 크레이트가 `#[path]` 로 가져다 쓴다 — 복사본이 생기면 같이
-고쳐야 하는데 안 고쳐진다.
+This is the check that matters. The decoder tests are built from the standards, and a
+standard misread makes the builder and the decoder wrong together — the tests still pass.
+The first replay found `B604F` (40 % of a trading day) being refused as wrong-length on every
+single message, with all decoder tests green. **Move a layout or a depth, run `jeed-pcap`.**
 
-## 저장소 안내
+### `jeed-crypto` — exchange WebSocket feeds
+
+One `[[feed]]` is one WebSocket connection, one thread, one ring. The `venue` picks the
+router; the `[[feed.instrument]]` blocks under it are what that connection subscribes to.
+Twelve venue names are known:
+
+| `venue`                              | wire venue byte           | address                          |
+|--------------------------------------|---------------------------|----------------------------------|
+| `binance-spot` / `binance-futures`   | BinanceSpot / BinanceFutures | `wss://stream.binance.com:9443/stream` / `wss://fstream.binance.com/stream` |
+| `upbit` / `bithumb`                  | Upbit / Bithumb           | `wss://api.upbit.com/websocket/v1` / `wss://ws-api.bithumb.com/websocket/v1` |
+| `okx`                                | Okx                       | `wss://ws.okx.com:8443/ws/v5/public` |
+| `bybit-spot` / `bybit-linear`        | BybitSpot / BybitLinear   | `wss://stream.bybit.com/v5/public/spot` / `…/linear` |
+| `bitget-spot` / `bitget-linear`      | BitgetSpot / BitgetLinear | `wss://ws.bitget.com/v2/ws/public` |
+| `gate-spot`                          | GateSpot                  | `wss://api.gateio.ws/ws/v4/`     |
+| `kucoin-spot` / `kucoin-futures`     | KucoinSpot / KucoinFutures | **from a REST ticket** (`bullet-public`); no `url` |
+
+The conf speaks **four channel words** and the router translates them into the venue's
+stream names:
+
+| `venue`            | `trade`                                 | `bbo`         | `book`                       | `delta`                                   |
+|--------------------|-----------------------------------------|---------------|------------------------------|-------------------------------------------|
+| binance-spot / -futures | `@trade` / `@aggTrade`             | `@bookTicker` | `@depth{N}@100ms` (N = 5·10·20) | `@depth@100ms`                          |
+| upbit / bithumb    | `trade`                                 | –             | `orderbook`                  | –                                         |
+| okx                | `trades`                                | –             | `books5`                     | `books`                                   |
+| bybit-spot / -linear | `publicTrade`                         | –             | `orderbook.{N}` (snapshot then deltas) | –                               |
+| bitget-spot / -linear | `trade`                              | –             | `books` / `books{N}` (snapshot then deltas) | –                          |
+| gate-spot          | `spot.trades`                           | –             | – (start book via REST)      | `spot.order_book_update`                  |
+| kucoin-spot / -futures | `/market/match` / `/contractMarket/execution` | –     | – (start book via REST)      | `/market/level2` / `/contractMarket/level2` |
+
+`book` is *whatever the venue's book channel emits* (a full book on Binance and OKX; a
+snapshot followed by diffs on Bybit and Bitget). `delta` is a diffs-only channel that needs
+a start book: Binance and OKX get it from their `book` channel, Gate and KuCoin fetch it
+over REST after every (re)connect and publish it to the same ring as a `Quote`. A channel the
+venue does not offer, or a depth it does not serve, is refused by `--check` — the check is
+the router's own constructor, so `--check` and the start agree.
+
+```toml
+[[feed]]
+name  = "binance-spot"
+venue = "binance-spot"
+mode  = "block"                       # hundreds of messages a second: block is the default
+cores = [4]
+ring  = "jeed.crypto.binance-spot"
+ring_slots = 65536
+# url = "wss://…"                     # override the venue default (proxy, testnet)
+# ping_secs = 30                      # protocol ping after this much silence; twice it → reconnect
+# reconnect_secs = 5
+
+[[feed.instrument]]
+symbol = "BTCUSDT"                    # the venue's own spelling, including case
+price_decimals = 2                    # tickSize 0.01   — from exchangeInfo, and it changes
+qty_decimals   = 5                    # stepSize 0.00001
+channels = ["trade", "bbo", "book", "delta"]
+# depth = 10                          # book depth where the venue offers a choice
+
+[[feed]]
+name  = "kucoin-futures"
+venue = "kucoin-futures"
+mode  = "block"
+cores = [6]
+ring  = "jeed.crypto.kucoin-futures"
+ring_slots = 16384
+# rest = "https://api-futures.kucoin.com"   # REST base override
+
+[[feed.instrument]]
+symbol = "XBTUSDTM"
+price_decimals = 1
+qty_decimals   = 0                    # contracts are whole lots
+channels = ["trade", "delta"]
+```
+
+`price_decimals` / `qty_decimals` are **configuration**, taken from the venue's instrument
+reference. A wrong scale does not round: frames whose digits the scale cannot hold are
+refused, and the report line's `fail` counter climbs. Some venue facts the routers already
+handle for you: Upbit and Bithumb send JSON in binary frames and switch to exponent notation
+above ten million (`1.04525E8`); OKX and Bybit batch several trades per frame; Bybit's
+`u == 1` is a full book whatever `type` says; KuCoin timestamps are nanoseconds on trades
+and milliseconds on books; deltas with more than 32 changed levels are dropped for the
+consumer to resync, never truncated.
+
+Subscriptions, dialect pings (`ping`, `{"op":"ping"}`, `spot.ping`, `{"type":"ping"}`) and
+REST requests are all *returned by the router* and performed by the binary between rounds —
+the receive loop itself makes no blocking call.
+
+### `jeed-fix` — FIX 4.4 market data
+
+One `[[feed]]` is one FIX session, one thread, one ring. The session — connect, Logon,
+heartbeats, TestRequest, ResendRequest, the silence check, reconnect — runs by itself; the
+binary sends one MarketDataRequest (`35=V`) after every Logon and otherwise only reports.
+
+```toml
+[[feed]]
+name  = "smbs"
+venue = "smbs"                        # the only FIX venue today
+mode  = "block"
+cores = [4]
+ring  = "jeed.fix.smbs"
+ring_slots = 65536
+host = "10.0.0.1"                     # from your circuit assignment
+port = 9100
+sender_comp_id = "JEED"               # tag 49, us
+target_comp_id = "SMBS"               # tag 56, the venue
+price_decimals = 2                    # FIX carries no precision: the whole session is scaled once
+qty_decimals   = 0
+symbols = ["USD/KRW", "EUR/KRW"]      # requested and kept; anything else is filtered
+# begin_string = "FIX.4.4"   heartbeat_secs = 30   reset_seq = true
+# depth = 0                  # tag 264: 0 = full book, 1 = top of book
+# subscription = "updates"   # "updates" (snapshot + incrementals) or "snapshot" (once)
+# default_qty = 0            # size to publish for a snapshot level that carries none
+```
+
+`jeed-fix` the crate knows the protocol and no venue; the binary supplies the venue layer as
+a **conf-driven adapter**. A full refresh (`35=W`) becomes a `Quote`, a trade entry in an
+incremental (`35=X`) becomes a `Trade`, and two things are **refused rather than guessed**:
+an incremental that moves the book (the wire has no delta record for it yet) and a level with
+no size when no `default_qty` is configured. Refusals are counted in the report line, so a
+venue doing something the adapter does not understand shows up as a number, not as a wrong
+book. Venue-specific behaviour is added beside the venue once a live session confirms it; the
+session itself has been exercised only against synthetic messages so far.
+
+## Verification
+
+```bash
+cargo test --workspace                    # ~1,300 tests. Socket tests use loopback; multicast uses 239.255/16
+cargo clippy --workspace --all-targets
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+cargo test -p jeed-crypto --test recv live -- --ignored   # real exchanges
+```
+
+Windows and Linux (WSL) must give the same results. OS calls live only in
+`jeed-shm/src/mapping/`, `jeed-krx/src/recv/socket/` and `jeed/src/{cpu,signal}/` as
+`windows.rs` / `posix.rs`; nothing above them carries a `#[cfg]`.
+
+Beyond the unit tests, three checks against reality have been done and are repeatable:
+
+- **KRX**: a full trading day (2026-08-07, 192.8 M datagrams) replayed with `jeed-pcap`, and
+  316,111 decoded records (10.06 M values) compared against the previous decoder's output —
+  zero mismatches (`documents/todo.md` §16).
+- **Crypto**: live runs against Binance, Upbit, Gate, KuCoin spot and KuCoin futures; every
+  feed connects, subscribes, fetches its start book where needed, and publishes with no
+  refusals.
+- **FIX**: the adapter and conf against the synthetic SMBS messages in `jeed-fix`'s test
+  suite; a live session is still to be run.
+
+`tests/` mirrors `src/`. Message builders and captured frames live once under
+`tests/<venue>/common/` and other test crates reach them by `#[path]` rather than copying.
+
+## Repository guide
 
 ```text
 documents/
-  feed_handler.md      설계 근거 (§ 번호는 todo.md 가 가리킨다)
-  todo.md              작업 이력 · 결정 · 측정 (pcap 전수 스캔, 유실률 …)
-  krx/                 KRX 표준서 발췌, 레이아웃 표, 제도 문서
+  feed_handler.md      design rationale (section numbers referenced from todo.md)
+  todo.md              work log · decisions · measurements (pcap scans, loss rates, the replay)
+  krx/                 KRX standards excerpts, layout tables, market-rule notes
 conf/
-  krx_trcodes.toml     표준서에서 생성 (tools/gen_krx_trcodes.py). 손으로 안 쓴다
-  krx.example.toml     jeed-krx 템플릿. IP·포트는 회선 배정표를 보고 사람이 적는다
-  crypto.example.toml  jeed-crypto 템플릿
-tools/                 표준서 xlsx → TOML 생성기, 레이아웃 덤프
+  krx_trcodes.toml     generated from the standards (tools/gen_krx_trcodes.py) — do not edit by hand
+  krx.example.toml     jeed-krx template; IPs and ports come from the circuit assignment
+  crypto.example.toml  jeed-crypto template
+  fix.example.toml     jeed-fix template
+tools/                 standards (xlsx) → TOML generator, layout dumper
 ```
 
-## 아직 없는 것
+## Not yet
 
-- `jeed-fix` 바이너리 — 배선은 있고 베뉴 어댑터(`MdAdapter`)가 없다. SMBS 는 실물 확인 후.
-- pcap 리플레이 대조 (`E:/Data/krx_pcap`), 소액채권·REPO·금현물 디코더, HTX·Kraken.
-- 링의 블로킹 폴백(`WaitOnAddress`), 피드 사망 시 청산 정책 — 소비자 쪽 결정.
+- Night-session derivatives (`…V` trcodes): same layouts, different ports, same instrument
+  codes with different books — needs a session/board identifier on the wire first.
+- Bond decoders against the live circuit; retail bonds, REPO, gold spot; HTX, Kraken.
+- A live FIX session; a `SnapshotDelta` mapping for FIX incrementals.
+- A blocking fallback for ring consumers (`WaitOnAddress`); a liquidation policy on feed
+  death — the consumer's decision.
 
 ## License
 

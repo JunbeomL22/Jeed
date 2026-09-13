@@ -106,8 +106,8 @@ impl DerivativeTradeQuote {
 
 /// Book depth for a `G7` trcode, or `None` if it is not one.
 ///
-/// Same rule as [`quote::depth_for`](super::quote::depth_for), including the
-/// single-stock futures trap: `G704F` is five-deep (431 B), not ten.
+/// Same rule as [`quote::depth_for`](super::quote::depth_for): `G704F` is
+/// ten-deep (661 B) like `B604F`, as the capture shows.
 pub const fn depth_for(trcode: TrCode) -> Option<usize> {
     if !trcode.is_derivative() {
         return None;
