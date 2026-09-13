@@ -267,7 +267,7 @@ fn validate_quote(q: &QuotePayload) -> Result<(), WireError> {
         found => return Err(WireError::LevelExtKind { found }),
     }
     match q.quote_ext_kind {
-        quote_ext::NONE | quote_ext::LP_HOLDINGS | quote_ext::SEQUENCE => Ok(()),
+        quote_ext::NONE | quote_ext::LP_HOLDINGS | quote_ext::SEQUENCE | quote_ext::EXPECTED_PRICE => Ok(()),
         found => Err(WireError::QuoteExtKind { found }),
     }
 }

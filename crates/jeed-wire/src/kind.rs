@@ -123,6 +123,13 @@ pub mod quote_ext {
 
     /// `quote_ext` is the exchange sequence boundary (crypto snapshots).
     pub const SEQUENCE: u8 = 2;
+
+    /// `quote_ext` is the indicative price of a call auction before the cross
+    /// (KRX 예상체결가), in the record's `price_scale`.
+    ///
+    /// Only meaningful while an auction is running; the field is zero
+    /// otherwise, and a zero is not published.
+    pub const EXPECTED_PRICE: u8 = 3;
 }
 
 /// Trade payload flag bits ([`TradePayload::trade_flags`](crate::TradePayload::trade_flags)).
