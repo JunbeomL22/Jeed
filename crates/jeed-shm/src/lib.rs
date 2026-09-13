@@ -1,6 +1,7 @@
 //! Shared-memory transport for [`jeed_wire`] records.
 //!
-//! One segment is one SPSC channel: a pagefile-backed Windows named section
+//! One segment is one SPSC channel: an anonymously backed named shared-memory
+//! object — the pagefile on Windows, `/dev/shm` on Linux —
 //! holding a [`SegmentHeader`](jeed_wire::SegmentHeader) followed by a power-of-two
 //! array of fixed-size record slots. The feed handler writes
 //! ([`RingProducer`]); the consumer process reads
@@ -50,11 +51,15 @@
 //!
 //! ## Platform
 //!
-//! Windows only. The transport is `CreateFileMappingW` + `MapViewOfFile`
-//! against the pagefile; a POSIX `shm_open` sibling would slot in beside
-//! [`mapping`] without touching [`ring`], [`producer`], or [`consumer`].
+//! Windows and Linux. `CreateFileMappingW` + `MapViewOfFile` against the
+//! pagefile on one, `shm_open` + `mmap` on the other; [`ring`], [`producer`]
+//! and [`consumer`] sit above the difference and contain no platform code.
+//!
+//! **One rule does not carry over**: a Windows section dies with its last
+//! handle, a POSIX object is a name in `/dev/shm` that outlives every process
+//! that touched it. What that changes, and what it does not, is in [`mapping`].
 
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 

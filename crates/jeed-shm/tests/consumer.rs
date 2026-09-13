@@ -14,12 +14,19 @@ fn trade(price: i64) -> WireRecord {
     WireRecord::new_trade(h, TradePayload::new(price, 1))
 }
 
+/// The call that reports "no such segment": `OpenFileMappingW` on Windows,
+/// `shm_open` on POSIX. Attach fails the same way either side of that.
+#[cfg(windows)]
+const OPEN_CALL: &str = "OpenFileMappingW";
+#[cfg(unix)]
+const OPEN_CALL: &str = "shm_open";
+
 #[test]
 fn attaching_to_a_segment_nobody_published_is_an_error() {
     let name = unique("absent");
     assert!(matches!(
         RingConsumer::attach(&name).unwrap_err(),
-        ShmError::Os { call: "OpenFileMappingW", .. }
+        ShmError::Os { call, .. } if call == OPEN_CALL
     ));
 }
 

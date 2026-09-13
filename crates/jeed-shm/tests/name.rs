@@ -1,24 +1,38 @@
-//! `jeed_shm::name` — section names are validated before the OS sees them.
+//! `jeed_shm::name` — segment names are validated before the OS sees them.
 
 use jeed_shm::{MAX_NAME_LEN, SegmentName, ShmError};
 
+#[cfg(windows)]
 #[test]
-fn a_local_name_carries_the_session_namespace() {
-    let n = SegmentName::local("jeed.krx.hot").unwrap();
-    assert_eq!(n.to_string(), "Local\\jeed.krx.hot");
+fn a_windows_name_carries_its_namespace() {
+    assert_eq!(SegmentName::local("jeed.krx.hot").unwrap().to_string(), "Local\\jeed.krx.hot");
+    assert_eq!(SegmentName::global("jeed.krx.hot").unwrap().to_string(), "Global\\jeed.krx.hot");
 }
 
+#[cfg(windows)]
 #[test]
-fn a_global_name_carries_the_global_namespace() {
-    let n = SegmentName::global("jeed.krx.hot").unwrap();
-    assert_eq!(n.to_string(), "Global\\jeed.krx.hot");
-}
-
-#[test]
-fn the_namespace_is_part_of_the_identity() {
-    // Same text, different object. Comparing the bare name would say they are
-    // the same segment.
+fn on_windows_the_namespace_is_part_of_the_identity() {
+    // Same text, different kernel object. Comparing the bare name would say
+    // they are the same segment.
     assert_ne!(
+        SegmentName::local("jeed.krx.hot").unwrap(),
+        SegmentName::global("jeed.krx.hot").unwrap()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_posix_name_is_an_absolute_shm_name() {
+    assert_eq!(SegmentName::local("jeed.krx.hot").unwrap().to_string(), "/jeed.krx.hot");
+}
+
+#[cfg(unix)]
+#[test]
+fn on_posix_the_two_namespaces_are_one() {
+    // POSIX shared memory has a single namespace scoped by file permissions, so
+    // these name the same object — and equality has to say so, because the
+    // question it answers is "is this the same segment?".
+    assert_eq!(
         SegmentName::local("jeed.krx.hot").unwrap(),
         SegmentName::global("jeed.krx.hot").unwrap()
     );
@@ -40,7 +54,9 @@ fn a_name_at_the_limit_is_accepted_and_one_past_is_not() {
 
 #[test]
 fn a_separator_cannot_be_smuggled_in_from_config() {
-    // A config string must not be able to reach into another namespace.
+    // A backslash would reach into another Windows namespace and a slash would
+    // make a POSIX name the kernel refuses outright. Neither is something a
+    // config string should be able to do.
     assert_eq!(SegmentName::local("Global\\jeed"), Err(ShmError::NameChar { byte: b'\\' }));
     assert_eq!(SegmentName::local("jeed/krx"), Err(ShmError::NameChar { byte: b'/' }));
 }

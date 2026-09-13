@@ -18,8 +18,8 @@ pub enum ShmError {
         len: usize,
     },
 
-    /// Segment name contains a byte that is not allowed in a Win32 object
-    /// name (a path separator, or a non-printable / non-ASCII byte).
+    /// Segment name contains a byte that is not allowed in an OS object name
+    /// (a path separator, or a non-printable / non-ASCII byte).
     NameChar {
         /// Offending byte.
         byte: u8,
@@ -34,12 +34,13 @@ pub enum ShmError {
         requested: u64,
     },
 
-    /// A Win32 call failed.
+    /// An OS call failed.
     Os {
-        /// Name of the call that failed.
+        /// Name of the call that failed. Platform-specific, deliberately: the
+        /// useful thing to do with this is search for it.
         call: &'static str,
 
-        /// `GetLastError()` at the point of failure.
+        /// `GetLastError()` on Windows, `errno` on POSIX.
         code: u32,
     },
 
@@ -79,7 +80,10 @@ impl fmt::Display for ShmError {
             Self::Capacity { requested } => {
                 write!(f, "capacity {requested} is not a non-zero power of two")
             }
-            Self::Os { call, code } => write!(f, "{call} failed with GetLastError {code}"),
+            Self::Os { call, code } => {
+                let source = if cfg!(windows) { "GetLastError" } else { "errno" };
+                write!(f, "{call} failed with {source} {code}")
+            }
             Self::SegmentTooSmall { needed, mapped } => {
                 write!(f, "segment needs {needed} bytes, {mapped} mapped")
             }
