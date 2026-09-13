@@ -6,6 +6,7 @@ members = [
     "crates/jeed-shm",
     "crates/jeed-krx",
     "crates/jeed-fix",
+    "crates/jeed-crypto",
 ]
 
 [workspace.package]

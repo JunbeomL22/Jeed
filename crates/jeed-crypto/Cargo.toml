@@ -1,0 +1,23 @@
+[package]
+name = "jeed-crypto"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Crypto exchange WebSocket/JSON market data decoding into jeed-wire records"
+
+[dependencies]
+# **No `jeed-shm`**, for the reason `jeed-krx` and `jeed-fix` have none: the
+# decoders write into a `&mut WireRecord` the caller owns, so a decoder bug
+# cannot reach the segment.
+jeed-wire = { path = "../jeed-wire" }
+
+# Decimal text → integer, on the instrument's scale. The same parser the KRX
+# decoders use, entered through its variable-length door
+# (`DynamicExtractor`) rather than its fixed-width one.
+jeed-convert = { path = "../jeed-convert" }
+
+[dev-dependencies]
+jeed-wire = { path = "../jeed-wire" }
+jeed-convert = { path = "../jeed-convert" }

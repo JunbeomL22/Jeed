@@ -10,6 +10,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jeed-crypto"
+version = "0.1.0"
+dependencies = [
+ "jeed-convert",
+ "jeed-wire",
+]
+
+[[package]]
+name = "jeed-fix"
+version = "0.1.0"
+dependencies = [
+ "jeed-wire",
+]
+
+[[package]]
 name = "jeed-krx"
 version = "0.1.0"
 dependencies = [
