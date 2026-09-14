@@ -88,12 +88,12 @@ backtest parquet 리플레이도 `WireRecord` 를 만드는데 그쪽엔 UDP 코
 | `src/data/fix/{frame,tagvalue,market_data,session,error}.rs` | `jeed-fix` | 그대로 |
 | `src/data/exchanges/binance/json.rs` | `jeed-crypto/src/json.rs` | 스캐너는 그대로, 레벨 파서만 고정배열로 |
 | `src/data/exchanges/binance/decode/**` | `jeed-crypto/src/binance/` | 출력 타입 교체 + 디코더당 struct → `Instrument` + 자유함수 |
-| `src/data/receiver/crypto.rs` | `jeed-crypto/src/recv/` | 완료. epoll/thread-per-socket 두 갈래는 안 가져왔다 — 수신 루프 하나가 연결 하나다(§6) |
+| `src/data/receiver/crypto.rs` | `jeed-crypto/src/recv/` | 완료. epoll/thread-per-socket 두 갈래는 안 가져왔다 — 수신 루프 하나가 연결 하나다(§6). **원본은 2026-09-14 삭제** |
 | `src/data/exchanges/{upbit,bithumb,okx,bybit}/decode/**` | `jeed-crypto/{upbit,bithumb,okx,bybit}/` | 완료. 시퀀스 추적(`last_seq_id`)은 안 가져왔다 — 핸들러는 무상태 |
 | `src/data/exchanges/{bitget,gate,kucoin}/decode/**` | `jeed-crypto/{bitget,gate,kucoin}/` | 완료. kucoin 은 spot/futures 두 모듈 |
 | `src/data/exchanges/{htx,kraken}/decode/**` | **안 가져옴** | 결정(2026-09-13). htx 는 gzip 프레이밍, kraken 은 객체형 레벨·RFC3339·시퀀스 없음 |
 | `src/data/exchanges/*/encode/**` | **안 가져옴** | 주문 |
-| `src/data/recovery/**` | **안 가져옴** | 델타 복구는 북을 가진 소비자 몫 |
+| `src/data/recovery/**` | **안 가져옴** | 델타 복구는 북을 가진 소비자 몫. 경계 확정 (2026-09-14) → §17 |
 | `src/data/exchanges/smbs/**` | 보류 | 베뉴 방언, 실물 확인 후 |
 | `src/data/exchanges/krx/fep/**` | **안 가져옴** | 주문 |
 
@@ -857,7 +857,7 @@ G711F  KR4D056869S2 스프레드   상한 000000.00  하한 000000.00   ← 제�
   모르면 5 포트를 전부 열어야 한다. 마스터(`A0`)에 실리는지 확인 필요
 - **재전송 포트(20301 등) 사용 여부.** feed_handler §11④ 가 "재전송 포트 혼용 시 역전이 생길 수 있다" 고
   적고 있다. 12% 유실을 메우려면 쓰고 싶지만 순서 보장이 깨진다
-- **소비자가 Jeed 를 path 의존으로 볼지 git 의존으로 볼지.** `jeed-wire` 버저닝 방식이 달라진다
+- ~~**소비자가 Jeed 를 path 의존으로 볼지 git 의존으로 볼지.**~~ → **path 의존 제안 (2026-09-14, §17③).** 두 레포는 모든 머신에 나란히 있고 개발자가 한 사람이다. CI 가 갈라지면 git 의존으로 바꾼다
 - ~~**`jeed-fix` 의 출구 — 자리는 났고 입주자가 없다.**~~ → **conf 가 모는 `SnapshotAdapter` 가
   들어갔다 (2026-09-13, §6).** 남은 건 SMBS 실접속에서만 알 수 있는 것 — 35=X 를 어떻게 보내는지,
   크기 없음이 무슨 뜻인지 — 이고, 그때 어댑터를 그 베뉴 옆에서 특수화한다
@@ -1203,3 +1203,123 @@ decode/
   전용으로 굳으면 jeed-fix 가 들어올 자리가 없다. 전송계층을 추상화하고, 링에 싣는 경로는
   하나로 둔다.
 - 하트비트는 수신 루프 **안에서** 찍는다 (별도 스레드는 위장이다).
+
+## 17. 복구 경계와 두 레포의 분할 (2026-09-14, 결정)
+
+fractal-engine 의 `src/data` 피드 부분을 Jeed 에 일임하면서 **복구(recovery)는 fractal-engine 에 남긴다.**
+결정권은 두 레포 모두 사용자에게 있다. 경계를 옮길 때는 이 절과 fractal-engine `CLAUDE.md`
+"두 레포의 경계" 를 같이 고친다.
+
+### ① 한 줄 규칙
+
+**Jeed 는 `WireRecord` 까지, fractal-engine 은 `WireRecord` 부터.**
+
+| | Jeed (생산자) | fractal-engine (소비자 = OMS) |
+|---|---|---|
+| 수신 | KRX UDP · FIX 4.4 · 크립토 WS | shm 링 consumer — 라이브 엣지 attach, `Lagged(n)` 처리 |
+| 변환 | 원시 바이트 → `WireRecord` | `WireRecord` → `SnapshotData`/`TradeData`/`SnapshotDeltaData` (`wire::adapt::fill_*`) |
+| 상태 | **없음.** 북·시퀀스·`last_seq_id` 전부 안 가짐 | 오더북 · 갭 탐지 · 복구 FSM · 전략 · 리스크 · 주문 |
+| REST | **시작 북만** — 소켓에 전체 북이 없는 베뉴(Gate)에서 구독 직후 한 번 (`Router::rest_books`) | **갭 복구** — `src/data/recovery/` 의 워커가 `ureq` 로 받아 온다 |
+| 의존 | fractal-engine 을 보지 않는다 | `jeed-wire` · `jeed-shm`(consumer) · `jeed-crypto`(`default-features = false`, 디코더만) |
+| 안 함 | 북 · 복구 · 주문 · 백테스트 · 정규화 | KRX/FIX/크립토 수신 · 원시 디코드 (이관 후 `src/data/receiver`·`exchanges/*/decode`·`fix` 는 지운다) |
+
+복구가 소비자 몫인 이유는 **빈도가 아니라 구조**다. 갭 판정에는 마지막으로 적용한 갱신 ID 가 필요하고,
+스냅샷이 쓸 만한지는 버퍼된 델타와 맞춰 봐야 하고, OKX·Bitget 체크섬은 북이 있어야 계산된다.
+무상태 핸들러는 셋 중 어느 것도 할 수 없다. 반대로 "OMS 가 Jeed 에 스냅샷을 요청하는" 역방향 채널은
+Jeed 를 요청 처리자로 만들어 무상태를 깨고, 프로세스 경계를 한 번 더 넘어 복구를 늦추며, 결국 언제 요청할지는
+여전히 북 쪽이 정한다 — 기각.
+
+### ② 델타 와이어 계약 — 소비자 갭 탐지가 읽는 필드
+
+`SnapshotDeltaPayload` 의 세 ID 와 플래그를 거래소별로 어떻게 채우는지가 계약이다. fractal-engine 의
+`GapTracker` 는 이 표를 보고 판정한다. **디코더를 고쳐 이 표가 바뀌면 fractal-engine 이 깨진다** — 표를 먼저 고친다.
+
+| 베뉴 | `first_update_id` | `final_update_id` | `prev_final_update_id` (`PREV_FINAL_VALID`) | 소비자 판정 |
+|---|---|---|---|---|
+| Binance spot | `U` | `u` | — | Range: `U == last_u + 1` |
+| Binance USD-M | `U` | `u` | `pu` ✓ | Chain: `pu == last_u` (fractal 은 현재 Range 로 보고 있다 — `fill_delta` 때 Chain 으로 전환 가능) |
+| Gate | `U` | `u` | — | Range |
+| KuCoin spot | `sequenceStart` | `sequenceEnd` | — | Range |
+| KuCoin futures | `sequence` | `sequence` | — | Monotonic: `seq == last + 1` |
+| Bybit | `u` | `u` | — (교차 스트림 `seq` 는 싣지 않음) | Monotonic |
+| OKX | `seqId` | `seqId` | `prevSeqId` ✓ | Chain: `prevSeqId == last_seqId` |
+| Bitget | `seq` | `seq` | `pseq` ✓ | Chain |
+| Upbit / Bithumb | 스냅샷 전용, 델타 없음 | | | 갭 개념 없음 — 다음 스냅샷이 고친다 |
+| HTX / Kraken | **받지 않음** (§3) | | | fractal-engine 복구에서도 지웠다 (2026-09-14) |
+
+fractal-engine 쪽 주의: 현재 `GapTracker::Chain` 은 인프로세스 디코더가 `final_update_id` 자리에 prev seq 를
+넣는 편법에 기대고 있다. `fill_delta` 어댑터를 만들 때 `prev_final_update_id` 를 읽는 정식 경로로 바꾼다.
+`SnapshotDeltaData` 에 그 필드가 없으면 추가한다.
+
+### ③ 제안 — fractal-engine 이 `jeed-wire` 를 path 의존으로 가져간다 → **완료 (2026-09-14)**
+
+fractal-engine `Cargo.toml` 에 `jeed-wire`·`jeed-shm` 이 path 의존으로 들어갔고 복사본은 지웠다
+(`src/data/common/wire/` 에는 `adapt`·`convert` 만 남고 나머지는 `pub use jeed_wire::*`). **복사본은 이미
+어긋나 있었다** — fractal 쪽 v1/헤더 48B/레코드 576B/ISIN 12B 대 jeed v4/64B/640B/Symbol 24B. 경고로 지키는
+ABI 가 며칠 만에 깨진 실증이다. 남은 간극: fractal 의 `AliasMap` 은 아직 12바이트 ISIN 키라 24바이트 심볼은
+`AdaptError::SymbolNotIsin` 으로 떨어진다 — 크립토 심볼(`1000000MOGUSDT` 류)을 붙일 때 `Isin` → `Symbol` 로 넓혀야
+한다. `quote_ext::EXPECTED_PRICE` 는 `QuoteExtension::KrxExpectedPrice` 로 받는다.
+
+fractal-engine 은 `src/data/common/wire/{header,kind,payload,record,segment,error}.rs` 에 와이어 타입
+복사본을 갖고 있다. "두 레포가 같은 레이아웃이어야 한다" 는 경고가 CLAUDE.md 에 박혀 있는데, 경고로 지키는
+ABI 는 언젠가 조용히 어긋난다. 제안:
+
+- fractal-engine `Cargo.toml` 에 `jeed-wire = { path = "../jeed/crates/jeed-wire" }`, 링 소비에
+  `jeed-shm`, 복구 REST 본문 디코드에 `jeed-crypto = { path = ..., default-features = false }`.
+- fractal-engine 의 와이어 복사본은 지우고 **`adapt.rs` 만 남긴다.** `adapt` 는 `InstrumentId`·`AliasMap`
+  을 알아야 하므로 소비자 소유가 맞다.
+- path 의존을 택하는 이유: 두 레포는 모든 머신(이 PC, Ubuntu 워크스테이션)에 나란히 체크아웃되고 개발자가
+  한 사람이다. `WIRE_FORMAT_VERSION` 올림 = 양쪽 동시 배포 이벤트라는 §2 원칙은 그대로다. CI 가 갈라지는 날
+  git 의존(태그 고정)으로 바꾼다.
+- 백테스트 리플레이(`read_krx_day` → `Vec<WireRecord>`)도 그대로 `jeed-wire` 타입을 만들게 된다. 이미
+  바이트 동일성 A/B 를 통과했으니(feed_handler §15) 타입 출처만 바뀐다.
+
+### ④ 복구 REST 본문은 `jeed-crypto` 디코더가 푼다
+
+fractal-engine 의 `SnapshotDecoderSet`(거래소별 REST 스냅샷 파서 10개)은 `jeed-crypto` 디코더 →
+`WireRecord(Quote, quote_ext::SEQUENCE = lastUpdateId 류)` → `fill_snapshot` 한 경로로 대체한다.
+같은 JSON 을 두 레포가 따로 파싱하지 않는다.
+
+- **이미 REST 본문을 받는 디코더:** Binance spot (`/api/v3/depth`) · Binance USD-M (`/fapi/v1/depth`) ·
+  Bitget (`/api/v2/spot/market/orderbook`, `/api/v2/mix/market/merge-depth`) · Gate (`/api/v4/spot/order_book`) ·
+  KuCoin spot (`/api/v3/market/orderbook/level2`) · KuCoin futures (`/api/v1/level2/snapshot`).
+- [ ] **OKX REST** `/api/v5/market/books` 본문 디코더 — `okx::book` 은 WS `action:"snapshot"` 봉투만 안다.
+- [ ] **Bybit REST** `/v5/market/orderbook` 본문 디코더 — `bybit::book` 은 WS `type:"snapshot"` 봉투만 안다.
+- [ ] 각 REST 디코더가 `quote_ext::SEQUENCE` 에 채우는 값이 ②표의 델타 ID 와 **같은 카운터**인지 한 줄씩 확인
+  (Binance `lastUpdateId`↔`u`, Gate `id`↔`u`, KuCoin `sequence`, Bitget `ts`/`seq`?, OKX `seqId`, Bybit `u`).
+  다른 카운터면 소비자가 "스냅샷 이후 델타" 를 가려낼 수 없다.
+
+**복구 스냅샷은 `WIRE_MAX_DEPTH = 10` 단이면 충분하다** (사용자 결정 2026-09-14). REST 가 1,000단을 주더라도
+와이어에서 잘리고, 그걸 우회하는 넓은 인프로세스 출력은 만들지 않는다. 10단 너머는 델타가 쌓이며 채워진다.
+
+### ⑤ 링 `Lagged(n)` 은 복구 트리거다
+
+소비자가 늦어 링이 덮어쓰면 거래소는 아무것도 안 떨어뜨렸어도 델타 사슬이 끊긴다. feed_handler §3·§7 대로
+**델타 kind 는 리싱크, 스냅샷 kind 는 카운터만.** fractal-engine 에는 시퀀스 비교를 우회하는 외부 트리거
+(`OrderBookMessage::TriggerRecovery` → `TradingEngine::trigger_recovery`)가 이미 있다 — 원래 Kraken 체크섬용으로
+만든 것인데 Kraken 은 지웠고 이 입구는 `Lagged` 가 쓴다. 되감기 재생은 하지 않는다 (§3 "되감아 재생해도 델타
+사슬의 구멍은 안 메워진다").
+
+### ⑥ 와이어는 복구를 모른다
+
+`RECOVERED` 플래그(feed_handler §8)는 **영구히 넣지 않는다.** 복구는 OMS 안에서 시작하고 끝나므로 와이어가
+표시할 사건이 없다. FIX resend 가 생기면 그건 핸들러 내부 사건이고, 소비자에겐 `STALE` 해제로만 보인다.
+
+### ⑦ 순서
+
+1. [x] 문서 — 이 절 + fractal-engine CLAUDE.md (2026-09-14)
+2. [x] fractal-engine 복구에서 HTX·Kraken 제거 (2026-09-14)
+2b. [x] **fractal-engine 인프로세스 수신·디코더 삭제** (2026-09-14, 원래 8단계였으나 앞당김 — 사용자 결정):
+    `receiver/`·`decoders.rs`·`fix/`·`flat_file_streamer.rs`·`exchanges/*/decode` WS 디코더·`krx/decode`·HTX·Kraken·`engine/data.rs`,
+    214 파일 −33,076 줄. 남긴 것: 주문 인코더, REST 스냅샷 디코더(복구, 6단계까지), KRX FEP·market_state·session, SMBS 식별자.
+    `Broker` 는 `WireRecord` 입력 + `DecoderBuffers::fill_from_wire`, 백테스트 `BackTestFeed::Records` 가 같은 어댑터를 탄다.
+    fractal-engine 의 SMBS FIX 파서도 지웠으므로 **`jeed-fix` 가 유일한 FIX 구현**이다.
+3. [ ] ④ OKX·Bybit REST 디코더 + SEQUENCE 카운터 확인 (Jeed)
+4. [x] ③ fractal-engine `jeed-wire` path 의존 전환, 와이어 복사본 삭제 (2026-09-14; 복사본은 이미 v1/v4 로 어긋나 있었다)
+5. [ ] `fill_delta` 어댑터 + `GapTracker::Chain` 정식 경로 + ②표 대조 테스트 (fractal-engine)
+6. [ ] `SnapshotDecoderSet` → `jeed-crypto` 디코드 경로 교체 (fractal-engine)
+7. [x] 링 consumer 연결 + `Lagged` → 복구 트리거 (2026-09-14). **라우터 없이** — fractal-engine 의 `Broker` 스레드와
+   `take_feed_producers` 를 지우고 각 `TradingEngine` 이 `FeedInput`(`engine/feed.rs`)으로 세그먼트마다 자기
+   `RingConsumer` 를 붙인다(feed_handler §2 그대로, 사용자 결정 "TE 가 직접 가져가는 게 효율적", TE 1~3개).
+   `Lagged(n)`·`Restarted` 는 델타 FSM 이 있는 종목 전부 `trigger_recovery`; 스냅샷 kind 는 카운터만.
+8. ~~[ ] 인프로세스 수신·디코더 삭제~~ → 2b 로 앞당겨 완료.
