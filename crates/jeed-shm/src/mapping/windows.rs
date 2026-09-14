@@ -119,13 +119,22 @@ pub(super) fn create(name: &SegmentName, len: usize) -> Result<Mapped, ShmError>
     map(handle, Access::ReadWrite, existed, len)
 }
 
-pub(super) fn open(name: &SegmentName) -> Result<Mapped, ShmError> {
+pub(super) fn open(name: &SegmentName, access: Access) -> Result<Mapped, ShmError> {
     // SAFETY: `name` is NUL-terminated UTF-16 by construction.
-    let handle = unsafe { OpenFileMappingW(FILE_MAP_READ, 0, name.as_ptr()) };
+    let handle = unsafe { OpenFileMappingW(rights(access), 0, name.as_ptr()) };
     if handle.is_null() {
         return Err(last_error("OpenFileMappingW"));
     }
-    map(handle, Access::ReadOnly, true, 0)
+    map(handle, access, true, 0)
+}
+
+/// `FILE_MAP_*` bits for an access mode — asked for on the handle and again on
+/// the view, which must not exceed it.
+const fn rights(access: Access) -> u32 {
+    match access {
+        Access::ReadWrite => FILE_MAP_READ | FILE_MAP_WRITE,
+        Access::ReadOnly => FILE_MAP_READ,
+    }
 }
 
 /// A section has no name once its handles are gone, so there is nothing to
@@ -146,13 +155,9 @@ pub(super) unsafe fn release(m: &Mapped) {
 }
 
 fn map(handle: Handle, access: Access, existed: bool, needed: usize) -> Result<Mapped, ShmError> {
-    let rights = match access {
-        Access::ReadWrite => FILE_MAP_READ | FILE_MAP_WRITE,
-        Access::ReadOnly => FILE_MAP_READ,
-    };
     // SAFETY: `handle` is a live section handle. A `bytes_to_map` of 0 maps
     // from the offset to the end of the section.
-    let base = unsafe { MapViewOfFile(handle, rights, 0, 0, 0) };
+    let base = unsafe { MapViewOfFile(handle, rights(access), 0, 0, 0) };
     if base.is_null() {
         let err = last_error("MapViewOfFile");
         // SAFETY: `handle` is live and not otherwise owned.

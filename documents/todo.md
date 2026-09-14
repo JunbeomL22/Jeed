@@ -1334,3 +1334,12 @@ fractal-engine 의 `SnapshotDecoderSet`(거래소별 REST 스냅샷 파서 10개
    `RingConsumer` 를 붙인다(feed_handler §2 그대로, 사용자 결정 "TE 가 직접 가져가는 게 효율적", TE 1~3개).
    `Lagged(n)`·`Restarted` 는 델타 FSM 이 있는 종목 전부 `trigger_recovery`; 스냅샷 kind 는 카운터만.
 8. ~~[ ] 인프로세스 수신·디코더 삭제~~ → 2b 로 앞당겨 완료.
+
+### ⑧ 주문 와이어는 fractal 소유 — jeed-shm 은 매핑만 빌려준다 (2026-09-14)
+
+OMS ↔ 주문 게이트웨이 전송(`crates/order-wire` ABI, `crates/order-shm` 백프레셔 SPSC 큐)은 **fractal-engine 소유**다.
+jeed 에는 주문을 아는 코드가 없다. 시세 링(덮어쓰기·seqlock)은 주문에 맞지 않아 큐는 따로 만들되, 플랫폼 코드
+(Win32 섹션 · `shm_open` · 크기 검증 · `SegmentName`)를 두 벌 두지 않으려고 `jeed_shm::SharedMapping` 을 빌린다.
+그래서 jeed-shm 에 추가한 것은 **`SharedMapping::open_rw(name)` 하나** — `open` 과 같되 읽기·쓰기 매핑(큐의
+소비자는 자기 읽기 커서를 세그먼트 안에 쓴다). 링 자체는 이 함수를 쓰지 않는다. 상세는 fractal-engine
+`documents/gateway/todo.md` §1.

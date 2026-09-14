@@ -92,7 +92,19 @@ impl SharedMapping {
     /// back from the OS, because the consumer must not take the producer's word
     /// for how much memory there is.
     pub fn open(name: &SegmentName) -> Result<Self, ShmError> {
-        Ok(Self { inner: imp::open(name)?, access: Access::ReadOnly })
+        Ok(Self { inner: imp::open(name, Access::ReadOnly)?, access: Access::ReadOnly })
+    }
+
+    /// Opens an existing object read **and write**, without creating it.
+    ///
+    /// Same as [`open`](Self::open) otherwise: the extent comes from the OS,
+    /// and a missing object is an error rather than a fresh one. This is for a
+    /// channel whose *consumer* also writes into the segment — a queue with a
+    /// read cursor, where the creator is the other side. The ring in this crate
+    /// never needs it; the consumer's OS-enforced read-only view is the point
+    /// of [`open`](Self::open).
+    pub fn open_rw(name: &SegmentName) -> Result<Self, ShmError> {
+        Ok(Self { inner: imp::open(name, Access::ReadWrite)?, access: Access::ReadWrite })
     }
 
     /// Removes the name, so nothing can attach to it again.

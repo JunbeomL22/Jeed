@@ -19,7 +19,7 @@
 //! object is a regular file on `tmpfs`, so seeking to its end reports the same
 //! size with one portable call and no struct at all.
 
-use super::Mapped;
+use super::{Access, Mapped};
 use crate::error::ShmError;
 use crate::name::SegmentName;
 use core::ffi::{c_char, c_int, c_void};
@@ -106,13 +106,17 @@ pub(super) fn create(name: &SegmentName, len: usize) -> Result<Mapped, ShmError>
     map(fd, PROT_READ | PROT_WRITE, existed, len)
 }
 
-pub(super) fn open(name: &SegmentName) -> Result<Mapped, ShmError> {
+pub(super) fn open(name: &SegmentName, access: Access) -> Result<Mapped, ShmError> {
+    let (oflag, prot) = match access {
+        Access::ReadWrite => (O_RDWR, PROT_READ | PROT_WRITE),
+        Access::ReadOnly => (O_RDONLY, PROT_READ),
+    };
     // SAFETY: `name` is NUL-terminated ASCII with a single leading `/`.
-    let fd = unsafe { shm_open(name.as_ptr(), O_RDONLY, 0) };
+    let fd = unsafe { shm_open(name.as_ptr(), oflag, 0) };
     if fd < 0 {
         return Err(last_error("shm_open"));
     }
-    map(fd, PROT_READ, true, 0)
+    map(fd, prot, true, 0)
 }
 
 pub(super) fn unlink(name: &SegmentName) -> Result<(), ShmError> {

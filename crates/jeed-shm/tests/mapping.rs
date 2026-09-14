@@ -37,6 +37,33 @@ fn access_is_recorded_and_differs_by_end() {
 }
 
 #[test]
+fn open_rw_writes_into_the_creator_s_memory_without_creating() {
+    // The other end of a queue: it did not make the segment, but it owns a
+    // cursor inside it and must be able to advance it.
+    let name = unique("rw");
+    let w = SharedMapping::create(&name, 4096).unwrap();
+    let rw = SharedMapping::open_rw(&name).unwrap();
+    assert_eq!(rw.access(), Access::ReadWrite);
+    assert!(rw.existed(), "open never creates");
+    assert!(rw.len() >= 4096, "{}", rw.len());
+
+    // SAFETY: both views cover at least 4096 writable bytes.
+    unsafe {
+        rw.as_ptr().add(64).write(0x77);
+        assert_eq!(w.as_ptr().add(64).read(), 0x77);
+        w.as_ptr().add(65).write(0x88);
+        assert_eq!(rw.as_ptr().add(65).read(), 0x88);
+    }
+    assert_ne!(w.as_ptr(), rw.as_ptr(), "two views, one object");
+}
+
+#[test]
+fn open_rw_on_a_segment_nobody_created_is_an_error() {
+    let name = unique("rw-absent");
+    assert!(matches!(SharedMapping::open_rw(&name), Err(ShmError::Os { .. })));
+}
+
+#[test]
 fn the_mapped_extent_is_at_least_what_was_asked_for() {
     let name = unique("extent");
     let m = SharedMapping::create(&name, 4096 + 1).unwrap();
