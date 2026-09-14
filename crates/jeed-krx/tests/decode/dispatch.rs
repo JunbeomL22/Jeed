@@ -1,8 +1,8 @@
 //! `jeed_krx::decode::dispatch` — picking a decoder from the five trcode bytes.
 
 use crate::common::{
-    A3, B6, BondA3, BondB6, BondG7, EquityA3, EtfB7, G7, M4, Q2, RECV_NS, StockB6, V1, ktb_book,
-    kospi200_book, single_stock_book,
+    A3, B6, BondA3, BondB6, BondG7, EquityA3, EtfB7, G7, M4, Q2, RECV_NS, SmallLotB6, SmallLotG7,
+    StockB6, V1, ktb_book, kospi200_book, nhb_book, single_stock_book,
 };
 use jeed_krx::KrxError;
 use jeed_krx::TrCode as T;
@@ -31,16 +31,32 @@ fn every_decoder_this_build_has_is_reachable_from_the_trcode_alone() {
     assert_eq!(kind_of(&BondB6::ktb(ktb_book()).build()), WireKind::Quote);
     assert_eq!(kind_of(&BondA3::ktb().build()), WireKind::Trade);
     assert_eq!(kind_of(&BondG7::ktb(ktb_book()).build()), WireKind::TradeQuote);
+    assert_eq!(kind_of(&SmallLotB6::nhb(nhb_book()).build()), WireKind::Quote);
+    assert_eq!(kind_of(&BondA3::nhb().build()), WireKind::Trade);
+    assert_eq!(kind_of(&SmallLotG7::nhb(nhb_book()).build()), WireKind::TradeQuote);
     assert_eq!(kind_of(&M4::derivative_session_start().build()), WireKind::MarketSchedule);
 }
 
 #[test]
-fn one_data_class_reaches_three_markets_and_not_one_byte_of_shared_layout() {
-    // `B6` is 324 B in 파생, 590 B in 주식, 462 B in 채권. This is why the
-    // dispatch is two levels and not a match on the first two bytes alone.
+fn one_data_class_reaches_four_markets_and_not_one_byte_of_shared_layout() {
+    // `B6` is 324 B in 파생, 590 B in 주식, 462 B in 채권, 882 B in 소액채권.
+    // This is why the dispatch is two levels and not a match on the first two
+    // bytes alone.
     assert_eq!(message_len(T::new(*b"B601F")), Some(324));
     assert_eq!(message_len(T::new(*b"B601S")), Some(590));
     assert_eq!(message_len(T::new(*b"B601K")), Some(462));
+    assert_eq!(message_len(T::new(*b"B601M")), Some(882));
+}
+
+#[test]
+fn the_three_bond_markets_share_one_trade_interface_and_not_the_others() {
+    // `A3` is one 223 B message under `01B`, `01K` and `01M`; the quote forms
+    // that go with it are not, which is why the product group still decides.
+    for code in [b"A301B", b"A301K", b"A301M"] {
+        assert_eq!(message_len(T::new(*code)), Some(223), "{}", T::new(*code));
+    }
+    assert_eq!(message_len(T::new(*b"G701K")), Some(643));
+    assert_eq!(message_len(T::new(*b"G701M")), Some(1063));
 }
 
 #[test]
@@ -101,9 +117,10 @@ fn an_unknown_trcode_is_reported_rather_than_ignored() {
 
 #[test]
 fn markets_this_build_does_not_decode_are_not_claimed() {
-    // 금현물, 배출권, 소액채권, REPO. Claiming one would mean applying some
-    // other market's layout to its bytes.
-    for code in [b"B601G", b"B601E", b"B601M", b"B601R", b"A301G", b"G701R"] {
+    // 금현물, 배출권, REPO. Claiming one would mean applying some other
+    // market's layout to its bytes — REPO's `A3` is the 채권 interface, but
+    // its prices are `[6].[3]` and its quote forms are not decoded.
+    for code in [b"B601G", b"B601E", b"B601R", b"A301G", b"A301R", b"G701R"] {
         assert!(!handles(T::new(*code)), "{}", T::new(*code));
         assert_eq!(message_len(T::new(*code)), None);
     }
@@ -114,7 +131,7 @@ fn the_length_check_agrees_with_what_the_decoder_actually_requires() {
     // The receive loop uses `message_len` to size a check before it commits a
     // ring slot, so a disagreement here would either drop good messages or let
     // bad ones through to the decoder.
-    let cases: [(&[u8; 5], Vec<u8>); 12] = [
+    let cases: [(&[u8; 5], Vec<u8>); 15] = [
         (b"B601F", B6::kospi200(kospi200_book()).build()),
         (b"G701F", G7::kospi200(kospi200_book()).build()),
         (b"A301F", A3::kospi200().build()),
@@ -126,6 +143,9 @@ fn the_length_check_agrees_with_what_the_decoder_actually_requires() {
         (b"B601K", BondB6::ktb(ktb_book()).build()),
         (b"A301K", BondA3::ktb().build()),
         (b"G701K", BondG7::ktb(ktb_book()).build()),
+        (b"B601M", SmallLotB6::nhb(nhb_book()).build()),
+        (b"A301M", BondA3::nhb().build()),
+        (b"G701M", SmallLotG7::nhb(nhb_book()).build()),
         (b"M401F", M4::derivative_session_start().build()),
     ];
     for (code, msg) in cases {

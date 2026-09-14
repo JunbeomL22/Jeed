@@ -62,11 +62,16 @@ pub struct KrxFields {
     /// so it reads as a leading zero rather than needing to be skipped.
     pub securities_price: Extractor,
 
-    /// 채권 가격 — 11 B, the same shape 증권 uses.
+    /// 채권 가격 `[부호][정수 7][.][소수 2]` — 11 B. 일반채권·소액채권·KTS
+    /// all spell it this way (참고-가격표시정보); the sign is always `'0'`.
     ///
-    /// A separate field rather than an alias so that a call site says which
-    /// market's field it is reading. If the two shapes ever diverge — and the
-    /// standard revises these tables — only one of them moves.
+    /// **Not** the point-free shape 증권 uses, although the two are the same
+    /// width. Reading a bond price with the 증권 reader fails on the `'.'`
+    /// at index 8 — every bond message on the 2026-08-07 capture was refused
+    /// that way (`documents/todo.md` §16③).
+    ///
+    /// REPO (`01R`) is different again, `[부호][정수 6][.][소수 3]`, and is
+    /// not decoded.
     pub bond_price: Extractor,
 
     /// 채권 수익률 `[부호][정수 5][.][소수 6]` — 13 B.
@@ -79,7 +84,7 @@ pub static KRX: LazyLock<KrxFields> = LazyLock::new(|| KrxFields {
     derivative_risk_free: signed(5, 3),
     derivative_plain: signed(9, 0),
     securities_price: signed(11, 0),
-    bond_price: signed(11, 0),
+    bond_price: signed(8, 2),
     bond_yield: signed(6, 6),
 });
 

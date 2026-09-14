@@ -56,8 +56,8 @@ pub fn decode(payload: &[u8], recv_ns: UnixNano, out: &mut WireRecord) -> Result
     }
 }
 
-/// `B6` — 우선호가. Four markets share the data class and not one byte of
-/// layout: 324/554 B 파생, 590 B 주식, 462 B 채권.
+/// `B6` — 우선호가. Five markets share the data class and not one byte of
+/// layout: 324/554 B 파생, 590 B 주식, 462 B 채권, 882 B 소액채권.
 fn quote(
     trcode: TrCode,
     payload: &[u8],
@@ -77,6 +77,9 @@ fn quote(
     }
     if bond::quote::handles(trcode) {
         return bond::quote::DECODER.decode(payload, recv_ns, out);
+    }
+    if bond::small_lot::quote::handles(trcode) {
+        return bond::small_lot::quote::DECODER.decode(payload, recv_ns, out);
     }
     Err(KrxError::UnknownTrCode { code: trcode })
 }
@@ -119,6 +122,9 @@ fn trade_quote(
     if bond::trade_quote::handles(trcode) {
         return bond::trade_quote::DECODER.decode(payload, recv_ns, out);
     }
+    if bond::small_lot::trade_quote::handles(trcode) {
+        return bond::small_lot::trade_quote::DECODER.decode(payload, recv_ns, out);
+    }
     Err(KrxError::UnknownTrCode { code: trcode })
 }
 
@@ -156,6 +162,12 @@ pub const fn message_len(trcode: TrCode) -> Option<usize> {
         [b'B', b'6'] if bond::quote::handles(trcode) => bond::quote::MESSAGE_LEN,
         [b'A', b'3'] if bond::trade::handles(trcode) => bond::trade::MESSAGE_LEN,
         [b'G', b'7'] if bond::trade_quote::handles(trcode) => bond::trade_quote::MESSAGE_LEN,
+        [b'B', b'6'] if bond::small_lot::quote::handles(trcode) => {
+            bond::small_lot::quote::MESSAGE_LEN
+        }
+        [b'G', b'7'] if bond::small_lot::trade_quote::handles(trcode) => {
+            bond::small_lot::trade_quote::MESSAGE_LEN
+        }
         [b'M', b'4'] => schedule::MESSAGE_LEN,
         _ => return None,
     })

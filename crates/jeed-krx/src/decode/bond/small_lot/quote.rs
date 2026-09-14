@@ -1,34 +1,34 @@
-//! `B6` — 일반채권·국고채권 우선호가. `IFMSRPD0023`, 462 B.
+//! `B6` — 소액채권 우선호가. `IFMSRPD0024`, 882 B.
 //!
 //! ```text
 //! [0:41]     header (shape B — no 정보분배종목인덱스)
-//! [41:431]   5 × 78 B level block — 가격11×2 잔량15×2 수익률13×2
-//!            가격 is [부호][정수 7][.][소수 2] → price_scale S2
-//! [431:446]  채권매도호가총잔량  ← no wire slot
-//! [446:461]  채권매수호가총잔량  ← no wire slot
-//! [461:462]  0xFF
+//! [41:821]   5 × 156 B level block — 종목 78 B then 종류 78 B
+//! [821:851]  채권매도/매수호가총잔량      ← no wire slot
+//! [851:881]  채권종류매도/매수호가총잔량  ← no wire slot
+//! [881:882]  0xFF
 //! ```
 
-use crate::decode::bond::{self, DEPTH, LEVEL_LEN};
+use crate::decode::bond::{self, DEPTH};
+use crate::decode::bond::small_lot::{BOOK_TAIL_LEN, LEVEL_LEN};
 use crate::decode::common::fill_record_header;
 use crate::error::KrxError;
 use crate::extract::KRX;
 use crate::trcode::TrCode;
 use jeed_wire::{QuotePayload, RecordHeader, UnixNano, Venue, WireKind, WireRecord};
 
-/// `IFMSRPD0023`.
-pub const MESSAGE_LEN: usize = bond::HEADER_LEN + DEPTH * LEVEL_LEN + bond::BOOK_TAIL_LEN;
+/// `IFMSRPD0024`.
+pub const MESSAGE_LEN: usize = bond::HEADER_LEN + DEPTH * LEVEL_LEN + BOOK_TAIL_LEN;
 
-const _: () = assert!(MESSAGE_LEN == 462);
+const _: () = assert!(MESSAGE_LEN == 882);
 
-/// The 채권 우선호가 decoder.
+/// The 소액채권 우선호가 decoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BondQuote;
+pub struct SmallLotQuote;
 
-/// `IFMSRPD0023`.
-pub const DECODER: BondQuote = BondQuote;
+/// `IFMSRPD0024`.
+pub const DECODER: SmallLotQuote = SmallLotQuote;
 
-impl BondQuote {
+impl SmallLotQuote {
     /// Fixed message length this interface defines.
     #[inline]
     pub const fn message_len(&self) -> usize {
@@ -63,10 +63,7 @@ impl BondQuote {
     }
 }
 
-/// `true` if this trcode is a `B6` on a 일반채권·국고채권 channel.
-///
-/// 소액채권 `B601M` is a different interface (882 B) and is claimed by
-/// [`small_lot::quote`](super::small_lot::quote) instead.
+/// `true` if this trcode is a `B6` on the 소액채권 channel.
 pub const fn handles(trcode: TrCode) -> bool {
-    matches!(trcode.data_class(), [b'B', b'6']) && bond::is_general_group(trcode)
+    matches!(trcode.data_class(), [b'B', b'6']) && bond::is_small_lot_group(trcode)
 }

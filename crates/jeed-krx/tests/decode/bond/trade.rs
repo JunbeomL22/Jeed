@@ -1,6 +1,7 @@
 //! `jeed_krx::decode::bond::trade` — `A3` 채권 체결.
 
 use crate::common::{BondA3, RECV_NS, VENUE_NS};
+use jeed_krx::TrCode as T;
 use jeed_krx::KrxError;
 use jeed_krx::decode::bond::trade::{DECODER, MESSAGE_LEN, handles};
 use jeed_wire::{Scale, WireKind, WireRecord, header_flags, trade_flags, trade_kind};
@@ -23,12 +24,23 @@ fn a_print_round_trips_into_a_trade_record() {
     assert_eq!(rec.validate(), Ok(()));
     assert_eq!(rec.kind(), Ok(WireKind::Trade));
     assert_eq!(rec.header.symbol_bytes(), b"KR103501GA98");
-    assert_eq!(rec.header.price_scale(), Ok(Scale::S0));
+    assert_eq!(rec.header.price_scale(), Ok(Scale::S2));
 
     let t = rec.trade().unwrap();
-    assert_eq!(t.price, 10345);
+    assert_eq!(t.price, 1_034_550, "10,345.50원 at two places");
     assert_eq!(t.qty, 100_000, "천원 단위");
     assert_eq!(t.cumulative_qty(), Some(8_500_000));
+}
+
+#[test]
+fn a_small_lot_print_is_the_same_interface_under_another_code() {
+    // IFMSRPD0027 is one message for all three 채권 markets; only the trcode
+    // and the ISIN say which one sent it.
+    let rec = decode(&BondA3::nhb().build());
+    assert_eq!(rec.kind(), Ok(WireKind::Trade));
+    assert_eq!(rec.header.symbol_bytes(), b"KR2001022C74");
+    assert_eq!(rec.trade().unwrap().price, 1_034_550);
+    assert_eq!(rec.header.price_scale(), Ok(Scale::S2));
 }
 
 #[test]
@@ -98,13 +110,13 @@ fn a_message_of_the_wrong_length_is_refused() {
 }
 
 #[test]
-fn only_general_and_government_bonds_are_claimed() {
-    use jeed_krx::TrCode as T;
-    assert!(handles(T::new(*b"A301B")));
-    assert!(handles(T::new(*b"A301K")));
-    // 소액채권 sends this same interface, but its quote and trade+quote forms
-    // are ones this build does not decode — a half-covered market is worse
-    // than an uncovered one.
-    assert!(!handles(T::new(*b"A301M")));
-    assert!(!handles(T::new(*b"A301F")));
+fn every_bond_market_but_repo_is_claimed() {
+    assert!(handles(T::new(*b"A301B")), "일반채권");
+    assert!(handles(T::new(*b"A301K")), "국고채권");
+    assert!(handles(T::new(*b"A301M")), "소액채권");
+    // REPO sends this same interface, but its price shape differs and its
+    // quote forms are not decoded — a half-covered market is worse than an
+    // uncovered one.
+    assert!(!handles(T::new(*b"A301R")), "REPO");
+    assert!(!handles(T::new(*b"A301F")), "파생");
 }

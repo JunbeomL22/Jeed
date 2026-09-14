@@ -1,19 +1,17 @@
-//! `G7` — 일반채권·국고채권 체결 + 우선호가. `IFMSRPD0029`, 643 B.
+//! `G7` — 소액채권 체결 + 우선호가. `IFMSRPD0030`, 1063 B.
 //!
-//! `A3`'s trade block followed by `B6`'s book:
+//! `A3`'s trade block followed by `IFMSRPD0024`'s book:
 //!
 //! ```text
-//! [0:41]     header (shape B)
-//! [41:222]   trade block — byte for byte the block A3 carries
-//! [222:612]  5 × 78 B level block
-//! [612:642]  채권매도/매수호가총잔량  ← no wire slot
-//! [642:643]  0xFF
+//! [0:41]       header (shape B)
+//! [41:222]     trade block — byte for byte the block A3 carries
+//! [222:1002]   5 × 156 B level block — 종목 78 B then 종류 78 B
+//! [1002:1062]  채권·채권종류 매도/매수호가총잔량  ← no wire slot
+//! [1062:1063]  0xFF
 //! ```
-//!
-//! As on the derivative side, this is the form to consume where it is sent: the
-//! print and the book it left behind cannot be separated by loss or reordering.
 
-use crate::decode::bond::{self, DEPTH, LEVEL_LEN};
+use crate::decode::bond::{self, DEPTH};
+use crate::decode::bond::small_lot::{BOOK_TAIL_LEN, LEVEL_LEN};
 use crate::decode::common::fill_record_header;
 use crate::error::KrxError;
 use crate::extract::KRX;
@@ -22,19 +20,19 @@ use jeed_wire::{
     QuotePayload, RecordHeader, TradeQuotePayload, UnixNano, Venue, WireKind, WireRecord,
 };
 
-/// `IFMSRPD0029`.
-pub const MESSAGE_LEN: usize = bond::TRADE_BLOCK_END + DEPTH * LEVEL_LEN + bond::BOOK_TAIL_LEN;
+/// `IFMSRPD0030`.
+pub const MESSAGE_LEN: usize = bond::TRADE_BLOCK_END + DEPTH * LEVEL_LEN + BOOK_TAIL_LEN;
 
-const _: () = assert!(MESSAGE_LEN == 643);
+const _: () = assert!(MESSAGE_LEN == 1063);
 
-/// The 채권 체결+우선호가 decoder.
+/// The 소액채권 체결+우선호가 decoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BondTradeQuote;
+pub struct SmallLotTradeQuote;
 
-/// `IFMSRPD0029`.
-pub const DECODER: BondTradeQuote = BondTradeQuote;
+/// `IFMSRPD0030`.
+pub const DECODER: SmallLotTradeQuote = SmallLotTradeQuote;
 
-impl BondTradeQuote {
+impl SmallLotTradeQuote {
     /// Fixed message length this interface defines.
     #[inline]
     pub const fn message_len(&self) -> usize {
@@ -70,10 +68,7 @@ impl BondTradeQuote {
     }
 }
 
-/// `true` if this trcode is a `G7` on a 일반채권·국고채권 channel.
-///
-/// 소액채권 `G701M` is a different interface (1063 B) and is claimed by
-/// [`small_lot::trade_quote`](super::small_lot::trade_quote) instead.
+/// `true` if this trcode is a `G7` on the 소액채권 channel.
 pub const fn handles(trcode: TrCode) -> bool {
-    matches!(trcode.data_class(), [b'G', b'7']) && bond::is_general_group(trcode)
+    matches!(trcode.data_class(), [b'G', b'7']) && bond::is_small_lot_group(trcode)
 }

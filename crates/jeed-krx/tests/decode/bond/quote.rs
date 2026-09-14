@@ -25,13 +25,40 @@ fn a_ktb_book_round_trips_into_a_quote_record() {
     assert_eq!(rec.kind(), Ok(WireKind::Quote));
     assert_eq!(rec.header.symbol_bytes(), b"KR103501GA98");
     assert_eq!(rec.header.depth, 3);
-    assert_eq!(rec.header.price_scale(), Ok(Scale::S0));
+    assert_eq!(rec.header.price_scale(), Ok(Scale::S2));
 
     let q = rec.quote().unwrap();
-    assert_eq!(q.ask[0].price, 10345);
-    assert_eq!(q.bid[0].price, 10340);
+    assert_eq!(q.ask[0].price, 1_034_550, "10,345.50원 at two places");
+    assert_eq!(q.bid[0].price, 1_034_000);
     assert_eq!(q.ask[0].qty, 500_000);
     assert_eq!(q.bid[0].qty, 300_000);
+}
+
+#[test]
+fn a_price_is_seven_integer_digits_a_point_and_two_decimals() {
+    // 참고-가격표시정보: 일반채권·소액채권·KTS spell `[부호][정수 7][.][소수 2]`.
+    // Same eleven bytes as a 증권 price, different shape, and the scale is
+    // the reader's — it goes on the header once, not on every level.
+    let rec = decode(&BondB6::ktb(ktb_book()).build());
+    assert_eq!(rec.header.price_scale(), Ok(Scale::S2));
+    assert_eq!(rec.quote().unwrap().ask[1].price, 1_035_000);
+}
+
+#[test]
+fn a_point_free_price_is_refused_not_misread() {
+    // The first bond decoder expected eleven digits, and every bond message
+    // on the 2026-08-07 capture was refused at byte 41 (`todo.md` §16③). The
+    // guard runs the other way too: eleven digits where the point belongs is
+    // not a price, and must not be read as one a hundred times too large.
+    let mut msg = BondB6::ktb(ktb_book()).build();
+    msg[41..52].copy_from_slice(b"00000010345");
+
+    let mut out = WireRecord::zeroed();
+    assert!(matches!(
+        DECODER.decode(&msg, RECV_NS, &mut out),
+        Err(KrxError::Field { at: 41, .. })
+    ));
+    assert_eq!(out, WireRecord::zeroed(), "no partial update");
 }
 
 #[test]
@@ -140,8 +167,9 @@ fn only_general_and_government_bonds_are_claimed() {
     use jeed_krx::TrCode as T;
     assert!(handles(T::new(*b"B601B")), "일반채권");
     assert!(handles(T::new(*b"B601K")), "국고채권");
-    // 소액채권 and REPO are much larger interfaces this build does not decode.
-    assert!(!handles(T::new(*b"B601M")), "소액채권 is IFMSRPD0024");
+    // 소액채권 is a different, wider interface with its own decoder; REPO is
+    // not decoded at all.
+    assert!(!handles(T::new(*b"B601M")), "소액채권 is IFMSRPD0024 — small_lot::quote");
     assert!(!handles(T::new(*b"B601R")), "REPO is IFMSRPD0025");
     assert!(!handles(T::new(*b"B601S")), "증권");
 }

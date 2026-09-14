@@ -15,10 +15,11 @@
 //! [222:223]  0xFF
 //! ```
 //!
-//! Note the message covers `01M` 소액채권 too, but that market's 우선호가 and
-//! 체결+우선호가 forms are different interfaces this build does not decode, so
-//! only `01B`/`01K` are claimed here — a half-decoded market is worse than an
-//! undecoded one.
+//! One interface for all three 채권 markets — `01B` 일반채권, `01K` 국고채권,
+//! `01M` 소액채권 — so this decoder is claimed for all three. REPO `01R` sends
+//! it too and is **not** claimed: its price shape differs and its 우선호가
+//! forms are not decoded, and a half-decoded market is worse than an undecoded
+//! one.
 
 use crate::decode::bond;
 use crate::decode::common::fill_record_header;
@@ -32,7 +33,7 @@ pub const MESSAGE_LEN: usize = bond::TRADE_BLOCK_END + 1;
 
 const _: () = assert!(MESSAGE_LEN == 223);
 
-/// The 채권 체결 decoder.
+/// The 채권 체결 decoder — 일반채권·국고채권·소액채권.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BondTrade;
 
@@ -65,7 +66,7 @@ impl BondTrade {
     }
 }
 
-/// `true` if this trcode is an `A3` on a 일반채권·국고채권 channel.
+/// `true` if this trcode is an `A3` on a 일반채권·국고채권·소액채권 channel.
 pub const fn handles(trcode: TrCode) -> bool {
     matches!(trcode.data_class(), [b'A', b'3']) && bond::is_bond_group(trcode)
 }

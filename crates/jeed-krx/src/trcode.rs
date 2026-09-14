@@ -10,7 +10,7 @@
 //! **The dispatch key is all five bytes.** The data class alone does not
 //! determine the layout: `B6` spans eight interfaces from 324 to 1387 bytes
 //! (derivative 5-deep 324, derivative 10-deep 554, equity 590, bond 462,
-//! retail bond 882, REPO 1387, gold 795, emission 325). Only the product group
+//! small-lot bond 882, REPO 1387, gold 795, emission 325). Only the product group
 //! settles which.
 
 use crate::error::KrxError;

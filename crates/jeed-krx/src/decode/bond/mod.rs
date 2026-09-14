@@ -1,21 +1,31 @@
-//! 일반채권·국고채권 — `01B` 장내일반채권, `01K` 장내국채.
+//! 채권 — `01B` 장내일반채권, `01K` 장내국채, `01M` 장내소액채권.
 //!
 //! ```text
-//! B6  IFMSRPD0023  462 B  우선호가
-//! A3  IFMSRPD0027  223 B  체결
-//! G7  IFMSRPD0029  643 B  체결 + 우선호가
+//! B6  IFMSRPD0023   462 B  일반채권·국고채권 우선호가        quote
+//! B6  IFMSRPD0024   882 B  소액채권 우선호가                  small_lot::quote
+//! A3  IFMSRPD0027   223 B  채권 체결 (세 시장 공통)           trade
+//! G7  IFMSRPD0029   643 B  일반채권·국고채권 체결 + 우선호가  trade_quote
+//! G7  IFMSRPD0030  1063 B  소액채권 체결 + 우선호가           small_lot::trade_quote
 //! ```
 //!
-//! `G7` is `A3`'s body followed by `B6`'s book, so the trade block
-//! ([`fill_trade`]) and the level block ([`fill_book`]) are each written once
-//! and used from both.
+//! Every `G7` is `A3`'s body followed by the market's `B6` book, so the trade
+//! block ([`fill_trade`]) and the level block ([`fill_book`]) are each written
+//! once and used from all four. 소액채권 differs from 일반채권 only in what
+//! follows each level — a second, 채권종류-level block — so it is a stride, not
+//! a second fill loop ([`small_lot`]).
 //!
-//! ## Three things are not like the other markets
+//! ## Four things are not like the other markets
 //!
 //! **The header is 41 bytes, not 47.** 채권 carries no 정보분배종목인덱스, so
 //! the clock field sits directly behind the 종목코드 — shape B in
 //! [`common`](super::common). Reading it with the shape-A reader shifts every
 //! field after the ISIN by six.
+//!
+//! **Prices carry a decimal point: `[부호][정수 7][.][소수 2]`.** Eleven bytes,
+//! the same width as a 증권 price and not the same shape — the point is at
+//! index 8, and a reader that expects a digit there refuses the message. The
+//! record's `price_scale` is therefore `S2`: `10345.50원` per 10,000원 face is
+//! `1_034_550` on the wire.
 //!
 //! **Every level carries a yield.** Price and yield are two views of the same
 //! quote and the exchange sends both; the yield rides in each level's `ext`
@@ -26,10 +36,11 @@
 //! A consumer comparing 채권 size against 주식 size without knowing that is
 //! comparing face value to share count.
 //!
-//! 소액채권 (`IFMSRPD0024`/`0030`) and REPO (`0025`/`0031`) are different, much
-//! larger interfaces and are out of scope; see `documents/todo.md`.
+//! REPO (`01R`, `IFMSRPD0025`/`0031`) spells its price `[부호][정수 6][.][소수 3]`
+//! and is out of scope; see `documents/todo.md`.
 
 pub mod quote;
+pub mod small_lot;
 pub mod trade;
 pub mod trade_quote;
 
@@ -56,7 +67,7 @@ const OFF_SESSION: usize = 15;
 pub const OFF_ISIN: usize = 17;
 const OFF_TIME: usize = 29;
 
-/// Both 채권 우선호가 forms carry five levels a side.
+/// Every 채권 우선호가 form carries five levels a side.
 pub const DEPTH: usize = 5;
 
 const _: () = assert!(DEPTH <= WIRE_MAX_DEPTH);
@@ -70,7 +81,8 @@ pub const QTY_LEN: usize = 15;
 /// 채권 수익률 field width — `[부호][정수 5][.][소수 6]`.
 pub const YIELD_LEN: usize = 13;
 
-/// Bytes per book level.
+/// Bytes per book level on 일반채권·국고채권 — and the first 78 bytes of a
+/// 소액채권 level, whose stride is twice this ([`small_lot::LEVEL_LEN`]).
 pub const LEVEL_LEN: usize = 78;
 
 const _: () = assert!(LEVEL_LEN == 2 * PRICE_LEN + 2 * QTY_LEN + 2 * YIELD_LEN);
@@ -119,18 +131,26 @@ fn narrow_yield(value: i64, at: usize) -> Result<BookYield, KrxError> {
     BookYield::try_from(value).map_err(|_| KrxError::Field { at, err: ParseErr::Overflow })
 }
 
-/// Fills [`DEPTH`] book levels starting at `first_level`.
+/// Fills [`DEPTH`] book levels starting at `first_level`, `stride` bytes
+/// apart.
+///
+/// The first [`LEVEL_LEN`] bytes of every level are the same six fields on
+/// every 채권 interface; `stride` is what sits between one level's start and
+/// the next — [`LEVEL_LEN`] on 일반채권·국고채권, twice that on 소액채권 where
+/// a 채권종류 block follows each level.
 pub fn fill_book(
     payload: &[u8],
     first_level: usize,
+    stride: usize,
     out: &mut QuotePayload,
 ) -> Result<BookShape, KrxError> {
+    debug_assert!(stride >= LEVEL_LEN);
     let price = &KRX.bond_price;
     let yield_reader = &KRX.bond_yield;
     let mut accum = BookAccum::default();
 
     for level in 0..DEPTH {
-        let at = first_level + level * LEVEL_LEN;
+        let at = first_level + level * stride;
 
         let ask_price =
             field::price(price, slice(payload, at + LVL_ASK_PRICE, PRICE_LEN), at + LVL_ASK_PRICE)?;
@@ -206,11 +226,26 @@ pub fn fill_trade(payload: &[u8]) -> Result<TradePayload, KrxError> {
     Ok(trade)
 }
 
-/// `true` for the two 채권 product groups this module decodes.
+/// `true` for 일반채권 `01B` and 국고채권 `01K` — the two groups that share
+/// `IFMSRPD0023`/`0029`.
+#[inline]
+pub const fn is_general_group(trcode: TrCode) -> bool {
+    matches!(trcode.product_group(), [b'0', b'1', b'B'] | [b'0', b'1', b'K'])
+}
+
+/// `true` for 소액채권 `01M`, whose 우선호가 forms are `IFMSRPD0024`/`0030`.
+#[inline]
+pub const fn is_small_lot_group(trcode: TrCode) -> bool {
+    matches!(trcode.product_group(), [b'0', b'1', b'M'])
+}
+
+/// `true` for every 채권 product group this module decodes — the three that
+/// share the `A3` 체결 interface.
 ///
-/// 소액채권 `01M` and REPO `01R` are deliberately absent: they use different,
-/// much larger interfaces.
+/// REPO `01R` is deliberately absent: its price shape differs and its 우선호가
+/// interfaces are not decoded, and claiming its 체결 alone would leave a
+/// half-decoded market.
 #[inline]
 pub const fn is_bond_group(trcode: TrCode) -> bool {
-    matches!(trcode.product_group(), [b'0', b'1', b'B'] | [b'0', b'1', b'K'])
+    is_general_group(trcode) || is_small_lot_group(trcode)
 }
