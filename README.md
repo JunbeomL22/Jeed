@@ -108,6 +108,28 @@ loop {
 }
 ```
 
+## Examples
+
+Each one runs on its own — the datagrams and JSON frames are embedded, so no circuit,
+exchange connection or running producer is needed.
+
+```bash
+cargo run -p jeed        --example krx         # examples/krx.rs — the whole KRX pipeline in one process:
+                                               # conf → ring → socket → feed thread → a datagram on loopback
+                                               # multicast → the record a consumer reads off the ring
+cargo run -p jeed-shm    --example roundtrip   # producer + consumer in one process:
+                                               # publish, read back, Lagged, Restarted
+cargo run -p jeed-krx    --example decode      # B601F book + A301F print through Pipeline::ingest,
+                                               # plus a filtered code, a wrong length and a refused field
+cargo run -p jeed-crypto --example decode      # Binance spot trade + depth, Upbit trade (exponent price),
+                                               # a wrong-symbol frame and an over-precise price, both refused
+cargo run -p jeed-shm    --example consumer -- jeed.krx.hot     # tail a live ring (start a producer first)
+```
+
+`consumer` is the consumer side as an OMS would write it: `jeed-wire` + `jeed-shm`, attach at the
+live edge, one line per record, and the two things a consumer must handle — `Lagged(n)` and
+`Restarted`.
+
 ## Building and running
 
 ```bash

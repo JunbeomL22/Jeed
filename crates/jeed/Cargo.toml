@@ -40,6 +40,14 @@ name = "jeed-fix"
 path = "src/bin/fix.rs"
 doc = false
 
+# The workspace-root integration example: conf → ring → socket → thread → a
+# datagram on loopback multicast → a record off the ring. It is the whole
+# pipeline rather than one crate's, so the file lives at `examples/` in the
+# repository root; a virtual workspace cannot own an example, hence the path.
+[[example]]
+name = "krx"
+path = "../../examples/krx.rs"
+
 [dependencies]
 jeed-wire = { path = "../jeed-wire" }
 jeed-shm = { path = "../jeed-shm" }
