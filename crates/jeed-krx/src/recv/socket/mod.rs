@@ -3,7 +3,7 @@
 //! | | Windows | Linux |
 //! |---|---|---|
 //! | API | Winsock (`ws2_32`) | BSD sockets (libc) |
-//! | bind address | `INADDR_ANY` — **forced** | the group address |
+//! | bind address | the `@interface`, else `INADDR_ANY` | the group address |
 //! | non-blocking | `ioctlsocket(FIONBIO)` | `fcntl(O_NONBLOCK)` |
 //! | wait | `WSAPoll` | `poll` |
 //! | oversized datagram | `WSAEMSGSIZE` | silently truncated |

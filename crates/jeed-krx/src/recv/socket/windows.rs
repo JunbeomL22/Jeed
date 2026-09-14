@@ -6,7 +6,6 @@
 use super::{OsErr, SocketOptions};
 use crate::recv::endpoint::Endpoint;
 use core::ffi::c_void;
-use std::net::Ipv4Addr;
 use std::sync::Once;
 
 /// Windows `SOCKET` — a `UINT_PTR`, not a file descriptor.
@@ -116,13 +115,16 @@ pub(super) fn join(endpoint: Endpoint, opts: SocketOptions) -> Result<Raw, OsErr
         }
         set_opt(raw, SOL_SOCKET, SO_RCVBUF, &(opts.recv_buffer_bytes as i32), "SO_RCVBUF")?;
 
-        // `INADDR_ANY` is the only address Windows accepts here — see the
-        // module docs. The group is selected by the membership below, and the
-        // port is all the bind contributes.
+        // Windows refuses a bind to the group address (see the module docs),
+        // so the socket binds to the local interface it joins on — `INADDR_ANY`
+        // when none was named. The group is selected by the membership below;
+        // the bind contributes the port and, with an interface, keeps the
+        // socket off every other NIC (and off the firewall's radar when that
+        // interface is loopback, which is how the tests run).
         let addr = SockAddrIn {
             sin_family: AF_INET as u16,
             sin_port: endpoint.port.to_be(),
-            sin_addr: u32::from_ne_bytes(Ipv4Addr::UNSPECIFIED.octets()),
+            sin_addr: u32::from_ne_bytes(endpoint.interface.octets()),
             sin_zero: [0; 8],
         };
         // SAFETY: `addr` is a live, fully initialised `sockaddr_in` and the

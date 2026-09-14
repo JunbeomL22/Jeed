@@ -11,11 +11,12 @@
 //! An IGMP join without an explicit local address goes out whichever interface
 //! the routing table prefers, which on a box with a management NIC and a feed
 //! NIC is a coin toss that silently produces an empty feed. `@` names the local
-//! address to join on:
+//! address to join on — and, on Windows, to bind on ([`socket`](crate::recv::socket)):
 //!
 //! ```text
 //! 233.38.231.92:10302                 join on whatever the route picks
 //! 233.38.231.92:10302@10.20.30.40     join on this NIC
+//! 239.255.77.88:30882@127.0.0.1       loopback only — what the tests use
 //! ```
 
 use core::fmt;

@@ -1,9 +1,11 @@
 //! `jeed::krx` — the wiring, end to end: conf → rings → sockets → threads →
 //! a datagram on the group → a record a consumer reads off the ring.
 //!
-//! The groups are administratively scoped (`239.255.0.0/16`) and looped back
-//! on the host; the 전문 is the decoder tests' own builder, reached by path
-//! rather than copied (`CLAUDE.md`).
+//! The groups are administratively scoped (`239.255.0.0/16`) and joined,
+//! sent and looped back on `127.0.0.1` only — a UDP socket on `INADDR_ANY`
+//! raises the Windows firewall prompt for every fresh test binary, and a
+//! managed box cannot answer it. The 전문 is the decoder tests' own builder,
+//! reached by path rather than copied (`CLAUDE.md`).
 
 #[allow(unused_imports)]
 #[path = "../../jeed-krx/tests/decode/common/mod.rs"]
@@ -30,7 +32,7 @@ fn conf(pid: u32) -> KrxConf {
         cores = [0]
         ring = "jeed.test.{pid}.hot"
         ring_slots = 64
-        sockets = ["239.255.79.92:31902", "239.255.79.96:31922"]
+        sockets = ["239.255.79.92:31902@127.0.0.1", "239.255.79.96:31922@127.0.0.1"]
         trcodes = ["B601F", "G701F"]
 
         [[feed]]
@@ -39,7 +41,7 @@ fn conf(pid: u32) -> KrxConf {
         cores = [1]
         ring = "jeed.test.{pid}.cold"
         ring_slots = 16
-        sockets = ["239.255.79.93:31915"]
+        sockets = ["239.255.79.93:31915@127.0.0.1"]
         trcodes = ["M401F"]
 
         [health]
@@ -77,7 +79,9 @@ fn two_feeds_start_publish_and_stop() {
     assert_eq!(feeds[1].name, "cold");
 
     // A 코스피200 선물 book on the hot feed's first group.
-    let sender = UdpSocket::bind("0.0.0.0:0").unwrap();
+    // Bound to loopback, the datagram leaves on loopback (measured; no
+    // `IP_MULTICAST_IF` needed), which is where the feeds joined.
+    let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
     sender.set_multicast_loop_v4(true).unwrap();
     let msg = B6::kospi200(kospi200_book()).build();
     let hot = SegmentName::local(&format!("jeed.test.{pid}.hot")).unwrap();
@@ -90,8 +94,8 @@ fn two_feeds_start_publish_and_stop() {
     let mut cold_rx = RingConsumer::attach(&cold).unwrap();
     assert_eq!(cold_rx.header().boot_id, opts.boot_id);
 
-    // Loopback multicast is best-effort on a box with several interfaces:
-    // send until the ring shows a quote, or give up after a while.
+    // Loopback multicast is best-effort: send until the ring shows a quote,
+    // or give up after a while.
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut published = Vec::new();
     while Instant::now() < deadline {

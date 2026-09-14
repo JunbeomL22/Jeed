@@ -1,9 +1,13 @@
 //! `jeed_krx::recv::socket` — Winsock and BSD sockets.
 //!
 //! These open real sockets, on an administratively scoped group that goes
-//! nowhere. They check the parts that are ours — the set-up order, the
-//! `WouldBlock` contract, the empty-poller case — not that multicast routing
-//! works on the machine running the tests.
+//! nowhere, joined on loopback. They check the parts that are ours — the
+//! set-up order, the `WouldBlock` contract, the empty-poller case — not that
+//! multicast routing works on the machine running the tests.
+//!
+//! Loopback is not decoration. On Windows a UDP socket bound to `INADDR_ANY`
+//! raises the firewall's "allow access" prompt for each freshly built test
+//! binary, and a managed box cannot answer it; `127.0.0.1` is exempt.
 //!
 //! They are deliberately *not* split by platform: what the caller is promised
 //! is the same on both, and the one place the kernels genuinely differ is the
@@ -14,7 +18,7 @@ use std::net::Ipv4Addr;
 
 /// 239.0.0.0/8 is administratively scoped — nothing forwards it off the host.
 fn group(port: u16) -> Endpoint {
-    Endpoint::new(Ipv4Addr::new(239, 255, 77, 88), port)
+    Endpoint::new(Ipv4Addr::new(239, 255, 77, 88), port).on(Ipv4Addr::LOCALHOST)
 }
 
 #[test]
@@ -49,17 +53,17 @@ fn two_groups_can_share_a_port() {
     // duplicate-port rule exists.
     //
     // Measured: Windows returns WSAEADDRNOTAVAIL for a bind to the group
-    // address, so the socket binds to INADDR_ANY and the destination address
-    // takes no part in the demultiplexing — two endpoints on one port would
-    // each receive *both* streams. Linux accepts the group bind, so there each
-    // socket gets only its own group.
+    // address, so the socket binds to the interface and the destination
+    // address takes no part in the demultiplexing — two endpoints on one port
+    // would each receive *both* streams. Linux accepts the group bind, so
+    // there each socket gets only its own group.
     //
     // `Receiver::new` refuses two sockets on one port on both platforms: the
     // stricter of the two rules, so one conf file is valid on either. What is
     // pinned down here is only what the socket layer itself promises — the
     // bind succeeds and a second socket on the same port may exist.
-    let a = Endpoint::new(Ipv4Addr::new(239, 255, 77, 88), 30_885);
-    let b = Endpoint::new(Ipv4Addr::new(239, 255, 77, 89), 30_885);
+    let a = Endpoint::new(Ipv4Addr::new(239, 255, 77, 88), 30_885).on(Ipv4Addr::LOCALHOST);
+    let b = Endpoint::new(Ipv4Addr::new(239, 255, 77, 89), 30_885).on(Ipv4Addr::LOCALHOST);
     let _sa = FeedSocket::join(a, SocketOptions::default()).unwrap();
     let _sb = FeedSocket::join(b, SocketOptions::default()).unwrap();
 }

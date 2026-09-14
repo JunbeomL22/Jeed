@@ -106,8 +106,8 @@ fn run_until_stops_when_asked() {
 #[test]
 fn every_endpoint_gets_its_own_counters_in_the_order_given() {
     let endpoints = [
-        Endpoint::new(Ipv4Addr::new(239, 255, 77, 90), 30_890),
-        Endpoint::new(Ipv4Addr::new(239, 255, 77, 91), 30_891),
+        Endpoint::new(Ipv4Addr::new(239, 255, 77, 90), 30_890).on(Ipv4Addr::LOCALHOST),
+        Endpoint::new(Ipv4Addr::new(239, 255, 77, 91), 30_891).on(Ipv4Addr::LOCALHOST),
     ];
     let filter = TrCodeFilter::new(["B601F", "G701F"].map(code));
     let rx = Receiver::new(
@@ -131,12 +131,13 @@ fn every_endpoint_gets_its_own_counters_in_the_order_given() {
 
 #[test]
 fn two_endpoints_on_one_port_are_refused() {
-    // A Windows multicast receiver binds to INADDR_ANY, so both sockets would
-    // receive both groups and every message would be published twice. A
-    // doubled book is not something to discover from the ring.
+    // A Windows multicast receiver binds to the interface, not the group, so
+    // both sockets would receive both groups and every message would be
+    // published twice. A doubled book is not something to discover from the
+    // ring.
     let clash = [
-        Endpoint::new(Ipv4Addr::new(239, 255, 77, 93), 30_893),
-        Endpoint::new(Ipv4Addr::new(239, 255, 77, 94), 30_893),
+        Endpoint::new(Ipv4Addr::new(239, 255, 77, 93), 30_893).on(Ipv4Addr::LOCALHOST),
+        Endpoint::new(Ipv4Addr::new(239, 255, 77, 94), 30_893).on(Ipv4Addr::LOCALHOST),
     ];
     let err = Receiver::new(
         Config::default(),

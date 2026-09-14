@@ -151,7 +151,7 @@ impl<S: RecordSink> Receiver<S> {
     /// The group must be a multicast address, and **no two endpoints may share
     /// a port**. That second rule is the stricter of the two platforms': Linux
     /// binds to the group and would demultiplex them correctly, Windows binds
-    /// to `INADDR_ANY` and both sockets would receive both groups, publishing
+    /// to the interface and both sockets would receive both groups, publishing
     /// every message twice ([`socket`](crate::recv::socket)). Applying it
     /// everywhere keeps one conf valid on both, and a doubled book is not
     /// something to discover from the ring.
